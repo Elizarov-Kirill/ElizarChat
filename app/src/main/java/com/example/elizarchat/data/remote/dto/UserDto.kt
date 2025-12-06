@@ -17,6 +17,9 @@ data class UserDto(
     @SerialName("displayName")
     val displayName: String? = null,
 
+    @SerialName("avatarUrl")
+    val avatarUrl: String? = null,
+
     @SerialName("isOnline")
     val isOnline: Boolean = false,
 
@@ -79,4 +82,10 @@ data class LoginRequestDto(
 
     @SerialName("password")
     val password: String
+)
+
+@Serializable
+data class UserResponseDto(
+    @SerialName("user")
+    val user: UserDto
 )

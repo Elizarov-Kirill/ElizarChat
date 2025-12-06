@@ -1,6 +1,7 @@
 package com.example.elizarchat.data.remote.api
 
 import com.example.elizarchat.data.remote.dto.UserDto
+import com.example.elizarchat.data.remote.dto.UserResponseDto
 import com.example.elizarchat.data.remote.dto.UsersResponseDto
 import retrofit2.Response
 import retrofit2.http.GET
@@ -10,7 +11,7 @@ import retrofit2.http.Query
 
 interface UserApi {
     @GET("users/me")
-    suspend fun getCurrentUser(): Response<UserDto>
+    suspend fun getCurrentUser(): Response<UserResponseDto>
 
     @PUT("users/me")
     suspend fun updateProfile(@Body user: UserDto): Response<UserDto>

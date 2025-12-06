@@ -1,5 +1,6 @@
 package com.example.elizarchat.data.remote.config
 
+import com.example.elizarchat.AppConstants
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -7,14 +8,9 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object RetrofitConfig {
-    // Конфигурация для реального сервера
-    private const val BASE_URL = "http://stalinvdote.ru/api/v1/"
-    private const val TIMEOUT = 30L
-    private const val DEBUG = true // Временная константа вместо BuildConfig.DEBUG
-
     fun create(token: String? = null): Retrofit {
         return Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(AppConstants.API_BASE_URL) // Используем HTTPS
             .addConverterFactory(GsonConverterFactory.create())
             .client(createOkHttpClient(token))
             .build()
@@ -22,9 +18,9 @@ object RetrofitConfig {
 
     private fun createOkHttpClient(token: String?): OkHttpClient {
         val builder = OkHttpClient.Builder()
-            .connectTimeout(TIMEOUT, TimeUnit.SECONDS)
-            .readTimeout(TIMEOUT, TimeUnit.SECONDS)
-            .writeTimeout(TIMEOUT, TimeUnit.SECONDS)
+            .connectTimeout(AppConstants.CONNECT_TIMEOUT, TimeUnit.SECONDS)
+            .readTimeout(AppConstants.READ_TIMEOUT, TimeUnit.SECONDS)
+            .writeTimeout(AppConstants.WRITE_TIMEOUT, TimeUnit.SECONDS)
 
         // Добавляем токен аутентификации
         token?.let {
@@ -44,13 +40,13 @@ object RetrofitConfig {
             val requestWithHeaders = originalRequest.newBuilder()
                 .addHeader("Content-Type", "application/json")
                 .addHeader("Accept", "application/json")
-                .addHeader("User-Agent", "ElizarChat-Android/1.0")
+                .addHeader("User-Agent", AppConstants.USER_AGENT)
                 .build()
             chain.proceed(requestWithHeaders)
         }
 
         // Логирование только в debug режиме
-        if (DEBUG) {
+        if (AppConstants.DEBUG) {
             val loggingInterceptor = HttpLoggingInterceptor().apply {
                 level = HttpLoggingInterceptor.Level.BODY
             }

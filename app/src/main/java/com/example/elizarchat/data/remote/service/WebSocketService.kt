@@ -14,13 +14,16 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import java.util.concurrent.TimeUnit
+import com.example.elizarchat.AppConstants
+
 
 class WebSocketService(
     private val token: String
 ) {
     companion object {
         private const val TAG = "WebSocketService"
-        private const val WS_URL = "ws://stalinvdote.ru:3000"
+        // Используем константу из AppConstants
+        private const val WS_URL = AppConstants.WS_BASE_URL
     }
 
     private val json = Json {

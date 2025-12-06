@@ -1,6 +1,7 @@
 package com.example.elizarchat.data.remote.service
 
 import android.util.Log
+import com.example.elizarchat.AppConstants
 import com.example.elizarchat.data.remote.ApiManager
 import com.example.elizarchat.data.remote.dto.LoginRequestDto
 import com.example.elizarchat.data.remote.dto.RegisterRequestDto
@@ -8,26 +9,14 @@ import com.example.elizarchat.data.remote.dto.websocket.ClientMessage
 import com.example.elizarchat.data.remote.dto.websocket.ServerMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
 import java.util.concurrent.TimeUnit
 
 class ServerTestService {
     companion object {
         private const val TAG = "ServerTestService"
-
-        // Тестовые учетные данные (измените на реальные)
-        private const val TEST_USERNAME = "kirill"
-        private const val TEST_PASSWORD = "edcrfv"
-        private const val TEST_EMAIL = "android@test.com"
     }
 
     private val scope = CoroutineScope(Dispatchers.IO)
@@ -35,16 +24,13 @@ class ServerTestService {
     fun runFullConnectionTest() {
         scope.launch {
             println("\n=== 🚀 ПОЛНЫЙ ТЕСТ ПОДКЛЮЧЕНИЯ К СЕРВЕРУ ===")
-            println("Сервер: stalinvdote.ru")
+            println("Сервер: ${AppConstants.SERVER_BASE_URL}")
 
             // 1. Тест доступности сервера
             testServerAvailability()
 
             // 2. Тест REST API
             testRestApi()
-
-            // 3. Тест WebSocket
-            // testWebSocket() // Будет после получения токена
 
             println("=== ТЕСТ ЗАВЕРШЕН ===\n")
         }
@@ -53,14 +39,14 @@ class ServerTestService {
     private suspend fun testServerAvailability() {
         println("\n1. 🔍 Проверка доступности сервера:")
 
-        // Тест HTTP API
-        println("   - HTTP API (REST):")
-        testEndpoint("http://stalinvdote.ru/api/v1/health", "Health Check")
-        testEndpoint("http://stalinvdote.ru/api/v1/info", "Server Info")
+        // Тест HTTPS API
+        println("   - HTTPS API (REST):")
+        testEndpoint("${AppConstants.SERVER_BASE_URL}/", "Root")
+        testEndpoint(AppConstants.API_BASE_URL, "API Root")
 
-        // Тест WebSocket
-        println("   - WebSocket:")
-        testWebSocketEndpoint("ws://stalinvdote.ru:3000")
+        // Тест WebSocket Secure
+        println("   - WebSocket Secure:")
+        testWebSocketEndpoint(AppConstants.WS_BASE_URL)
     }
 
     private fun testEndpoint(url: String, name: String) {
@@ -73,6 +59,7 @@ class ServerTestService {
             .url(url)
             .get()
             .addHeader("Accept", "application/json")
+            .addHeader("User-Agent", AppConstants.USER_AGENT)
             .build()
 
         try {
@@ -83,6 +70,7 @@ class ServerTestService {
                 println("       Ответ: $body...")
             } else {
                 println("     ⚠️ $name: Ошибка (${response.code})")
+                println("       Сообщение: ${response.message}")
             }
             response.close()
         } catch (e: Exception) {
@@ -97,6 +85,7 @@ class ServerTestService {
 
         val request = Request.Builder()
             .url(url)
+            .addHeader("User-Agent", AppConstants.USER_AGENT)
             .build()
 
         try {
@@ -111,7 +100,6 @@ class ServerTestService {
                 }
             })
 
-            // Даем время на подключение
             Thread.sleep(3000)
 
         } catch (e: Exception) {
@@ -125,40 +113,7 @@ class ServerTestService {
         // Создаем ApiManager без токена (для регистрации/входа)
         val apiManager = ApiManager()
 
-        // Тест регистрации (комментируем если пользователь уже существует)
-        /*
-        println("   - Регистрация пользователя:")
-        val registerRequest = RegisterRequestDto(
-            username = TEST_USERNAME,
-            password = TEST_PASSWORD,
-            email = TEST_EMAIL,
-            displayName = "Android Test User"
-        )
-
-        try {
-            val response = apiManager.authApi.register(registerRequest)
-            if (response.isSuccessful) {
-                println("     ✅ Регистрация успешна!")
-                val authResponse = response.body()
-                println("       Токен получен: ${authResponse?.token?.take(20)}...")
-                println("       Пользователь: ${authResponse?.user?.username}")
-
-                // Тестируем другие API с полученным токеном
-                testAuthenticatedApis(authResponse?.token)
-            } else {
-                println("     ⚠️ Регистрация не удалась: ${response.code()}")
-                println("       Сообщение: ${response.errorBody()?.string()}")
-
-                // Пробуем войти (если пользователь уже существует)
-                testLogin(apiManager)
-            }
-        } catch (e: Exception) {
-            println("     ❌ Ошибка регистрации: ${e.message}")
-            testLogin(apiManager)
-        }
-        */
-
-        // Тест входа (если регистрация пропущена или пользователь уже существует)
+        // Тест входа
         testLogin(apiManager)
     }
 
@@ -166,8 +121,8 @@ class ServerTestService {
         println("   - Вход пользователя:")
 
         val loginRequest = LoginRequestDto(
-            username = TEST_USERNAME,
-            password = TEST_PASSWORD
+            username = AppConstants.TestCredentials.USERNAME,
+            password = AppConstants.TestCredentials.PASSWORD
         )
 
         try {
@@ -183,21 +138,30 @@ class ServerTestService {
                 // Тестируем другие API с полученным токеном
                 authResponse?.token?.let { token ->
                     testAuthenticatedApis(token)
-                    testWebSocketConnection(token)
                 }
             } else {
                 println("     ❌ Вход не удался: ${response.code()}")
                 val errorBody = response.errorBody()?.string()
                 println("       Ошибка: $errorBody")
-                println("       Совет: Создайте пользователя через API или веб-интерфейс")
+
+                // Пробуем разные варианты Content-Type
+                testDifferentContentTypes()
             }
         } catch (e: Exception) {
             println("     ❌ Ошибка входа: ${e.message}")
             println("       Проверьте: ")
-            println("       1. Сервер запущен на stalinvdote.ru")
-            println("       2. Порт 3001 открыт для API")
-            println("       3. Пользователь $TEST_USERNAME существует")
+            println("       1. Сервер запущен на ${AppConstants.SERVER_BASE_URL}")
+            println("       2. Пользователь ${AppConstants.TestCredentials.USERNAME} существует")
+            println("       3. API путь правильный")
         }
+    }
+
+    private fun testDifferentContentTypes() {
+        println("       Пробуем разные форматы запросов:")
+
+        // Пробуем form-urlencoded
+        println("       - application/x-www-form-urlencoded")
+        // Можно добавить тест с другим Content-Type если нужно
     }
 
     private suspend fun testAuthenticatedApis(token: String) {
@@ -211,16 +175,27 @@ class ServerTestService {
             val response = apiManager.userApi.getCurrentUser()
             if (response.isSuccessful) {
                 println("     ✅ Пользователь получен")
-                val user = response.body()
-                println("       Username: ${user?.username}")
-                println("       DisplayName: ${user?.displayName}")
-                println("       Email: ${user?.email}")
-                println("       Online: ${user?.isOnline}")
+                val userResponse = response.body()
+                val user = userResponse?.user
+
+                if (user != null) {
+                    println("       Username: ${user.username}")
+                    println("       DisplayName: ${user.displayName}")
+                    println("       Email: ${user.email ?: "Не указан"}")
+                    println("       Online: ${user.isOnline}")
+                    println("       Avatar: ${user.avatarUrl ?: "Нет аватара"}")
+                    println("       Last seen: ${user.lastSeen}")
+                    println("       Created: ${user.createdAt}")
+                } else {
+                    println("       ⚠️ Пользователь null в ответе")
+                }
             } else {
                 println("     ⚠️ Ошибка: ${response.code()}")
+                println("       Сообщение: ${response.message()}")
             }
         } catch (e: Exception) {
             println("     ❌ Ошибка: ${e.message}")
+            e.printStackTrace()
         }
 
         // Тест поиска пользователей
@@ -231,7 +206,7 @@ class ServerTestService {
                 val users = response.body()
                 println("     ✅ Найдено пользователей: ${users?.size ?: 0}")
                 users?.take(3)?.forEachIndexed { i, user ->
-                    println("       ${i + 1}. ${user.username} (${user.displayName})")
+                    println("       ${i + 1}. ${user.username} (${user.displayName ?: "без имени"})")
                 }
             } else {
                 println("     ⚠️ Ошибка: ${response.code()}")
