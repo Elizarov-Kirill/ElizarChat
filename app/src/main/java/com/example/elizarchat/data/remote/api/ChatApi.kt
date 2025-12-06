@@ -2,6 +2,7 @@ package com.example.elizarchat.data.remote.api
 
 import com.example.elizarchat.data.remote.dto.ChatDto
 import com.example.elizarchat.data.remote.dto.ChatWithParticipantsDto
+import com.example.elizarchat.data.remote.dto.ChatsResponseDto
 import com.example.elizarchat.data.remote.dto.CreateChatRequestDto
 import retrofit2.Response
 import retrofit2.http.Body
@@ -13,7 +14,7 @@ import retrofit2.http.Path
 
 interface ChatApi {
     @GET("chats")
-    suspend fun getChats(): Response<List<ChatDto>>
+    suspend fun getChats(): Response<ChatsResponseDto>
 
     @GET("chats/{id}")
     suspend fun getChat(@Path("id") id: Long): Response<ChatWithParticipantsDto>

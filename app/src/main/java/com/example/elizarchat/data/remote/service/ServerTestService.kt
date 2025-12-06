@@ -203,9 +203,13 @@ class ServerTestService {
         try {
             val response = apiManager.userApi.searchUsers("test")
             if (response.isSuccessful) {
-                val users = response.body()
-                println("     ✅ Найдено пользователей: ${users?.size ?: 0}")
-                users?.take(3)?.forEachIndexed { i, user ->
+                // ИСПРАВЛЕНО: response.body() возвращает UsersResponseDto, а не List<UserDto>
+                val usersResponse = response.body()  // Это UsersResponseDto
+                val users = usersResponse?.users ?: emptyList()  // Теперь получаем список
+
+                println("     ✅ Найдено пользователей: ${users.size}")
+                users.take(3).forEachIndexed { i, user ->
+                    // Теперь user.username и user.displayName доступны
                     println("       ${i + 1}. ${user.username} (${user.displayName ?: "без имени"})")
                 }
             } else {
@@ -220,9 +224,13 @@ class ServerTestService {
         try {
             val response = apiManager.chatApi.getChats()
             if (response.isSuccessful) {
-                val chats = response.body()
-                println("     ✅ Чатов получено: ${chats?.size ?: 0}")
-                chats?.take(3)?.forEachIndexed { i, chat ->
+                // ИСПРАВЛЕНО: получаем chats из ChatsResponseDto
+                val chatsResponse = response.body()
+                val chats = chatsResponse?.chats ?: emptyList()
+
+                println("     ✅ Чатов получено: ${chats.size}")
+                chats.take(3).forEachIndexed { i, chat ->
+                    // ИСПРАВЛЕНО: chat.name и chat.type теперь доступны
                     println("       ${i + 1}. ${chat.name ?: "Без названия"} (${chat.type})")
                 }
             } else {
@@ -230,6 +238,7 @@ class ServerTestService {
             }
         } catch (e: Exception) {
             println("     ❌ Ошибка: ${e.message}")
+            e.printStackTrace()  // Добавим трассировку для отладки
         }
     }
 
