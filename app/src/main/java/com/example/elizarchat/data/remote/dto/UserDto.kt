@@ -17,9 +17,6 @@ data class UserDto(
     @SerialName("displayName")
     val displayName: String? = null,
 
-    @SerialName("avatarUrl")
-    val avatarUrl: String? = null,
-
     @SerialName("isOnline")
     val isOnline: Boolean = false,
 
@@ -35,11 +32,14 @@ data class UserDto(
  */
 @Serializable
 data class AuthResponseDto(
-    @SerialName("token")
-    val token: String,
+    @SerialName("message")
+    val message: String? = null,
 
     @SerialName("user")
-    val user: UserDto
+    val user: UserDto,
+
+    @SerialName("token")
+    val token: String
 )
 
 /**
@@ -49,4 +49,34 @@ data class AuthResponseDto(
 data class UsersResponseDto(
     @SerialName("users")
     val users: List<UserDto> = emptyList()
+)
+
+/**
+ * Запрос на регистрацию
+ */
+@Serializable
+data class RegisterRequestDto(
+    @SerialName("username")
+    val username: String,
+
+    @SerialName("password")
+    val password: String,
+
+    @SerialName("email")
+    val email: String? = null,
+
+    @SerialName("displayName")
+    val displayName: String? = null
+)
+
+/**
+ * Запрос на вход
+ */
+@Serializable
+data class LoginRequestDto(
+    @SerialName("username")
+    val username: String,
+
+    @SerialName("password")
+    val password: String
 )

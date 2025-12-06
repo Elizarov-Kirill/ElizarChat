@@ -18,8 +18,9 @@ object UserMapper {
         return User(
             id = dto.id.toString(), // Конвертируем Long в String
             username = dto.username,
-            email = dto.email.orEmpty(), // Преобразуем String? в String
-            displayName = dto.displayName.orEmpty(), // Преобразуем String? в String
+            email = dto.email.orEmpty(),
+            displayName = dto.displayName.orEmpty(),
+            avatarUrl = null, // В API нет avatarUrl
             isOnline = dto.isOnline,
             lastSeen = parseInstant(dto.lastSeen),
             createdAt = parseInstant(dto.createdAt) ?: Instant.now(),

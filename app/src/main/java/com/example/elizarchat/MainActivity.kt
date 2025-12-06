@@ -27,6 +27,8 @@ class MainActivity : ComponentActivity() {
         // Дополнительный тест DTO
         testDtoModels()
 
+        TestChatComplete.runTest()  // Новый тест Chat
+
         setContent {
             ElizarChatTheme {
                 Scaffold(
