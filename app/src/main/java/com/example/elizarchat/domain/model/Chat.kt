@@ -71,21 +71,3 @@ enum class ChatType {
     GROUP,      // Групповой чат
     CHANNEL     // Канал (публичный)
 }
-
-/**
- * Предпросмотр последнего сообщения (для списка чатов)
- */
-data class MessagePreview(
-    val id: String,
-    val content: String,
-    val senderName: String,
-    val timestamp: Instant,
-    val type: MessageType = MessageType.TEXT
-)
-
-/**
- * Типы сообщений (будет расширено в модели Message)
- */
-enum class MessageType {
-    TEXT, IMAGE, VIDEO, AUDIO, FILE, SYSTEM
-}

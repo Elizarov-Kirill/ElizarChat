@@ -68,6 +68,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation("com.google.code.gson:gson:2.13.2")
 
     // Kotlin Serialization (убедитесь что версия актуальная)
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")

@@ -3,6 +3,9 @@ package com.example.elizarchat.data.remote.dto
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+/**
+ * Полное DTO сообщения из API
+ */
 @Serializable
 data class MessageDto(
     @SerialName("id")
@@ -18,10 +21,10 @@ data class MessageDto(
     val content: String,
 
     @SerialName("type")
-    val type: String, // "text", "image", "video", etc.
+    val type: String, // "text", "image", "file", etc.
 
     @SerialName("status")
-    val status: String = "sent", // "sending", "sent", "delivered", "read"
+    val status: String = "sent", // "sent", "delivered", "read"
 
     @SerialName("createdAt")
     val createdAt: String, // ISO строка
@@ -39,6 +42,9 @@ data class MessageDto(
     val replyTo: Long? = null
 )
 
+/**
+ * DTO для вложения
+ */
 @Serializable
 data class AttachmentDto(
     @SerialName("id")
@@ -60,9 +66,18 @@ data class AttachmentDto(
     val duration: Long? = null,
 
     @SerialName("thumbnailUrl")
-    val thumbnailUrl: String? = null
+    val thumbnailUrl: String? = null,
+
+    @SerialName("width")
+    val width: Int? = null,
+
+    @SerialName("height")
+    val height: Int? = null
 )
 
+/**
+ * Ответ на запрос сообщений
+ */
 @Serializable
 data class MessagesResponseDto(
     @SerialName("messages")
@@ -75,6 +90,9 @@ data class MessagesResponseDto(
     val total: Int = 0
 )
 
+/**
+ * Запрос на отправку сообщения
+ */
 @Serializable
 data class SendMessageRequestDto(
     @SerialName("chatId")
@@ -93,6 +111,9 @@ data class SendMessageRequestDto(
     val attachments: List<AttachmentDto>? = null
 )
 
+/**
+ * Ответ на отправку сообщения
+ */
 @Serializable
 data class SendMessageResponseDto(
     @SerialName("message")
@@ -102,8 +123,29 @@ data class SendMessageResponseDto(
     val chat: ChatDto? = null
 )
 
+/**
+ * Запрос на обновление статуса
+ */
 @Serializable
 data class UpdateMessageStatusRequestDto(
     @SerialName("status")
     val status: String // "delivered", "read"
+)
+
+/**
+ * Запрос на редактирование сообщения
+ */
+@Serializable
+data class EditMessageRequestDto(
+    @SerialName("content")
+    val content: String
+)
+
+/**
+ * Запрос на удаление сообщения
+ */
+@Serializable
+data class DeleteMessageRequestDto(
+    @SerialName("deleteForEveryone")
+    val deleteForEveryone: Boolean = false
 )

@@ -21,13 +21,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Тест всей цепочки
         TestUserComplete.runTest()
-
-        // Дополнительный тест DTO
-        testDtoModels()
-
-        TestChatComplete.runTest()  // Новый тест Chat
+        TestChatComplete.runTest()
+        TestMessageComplete.runTest()
 
         setContent {
             ElizarChatTheme {

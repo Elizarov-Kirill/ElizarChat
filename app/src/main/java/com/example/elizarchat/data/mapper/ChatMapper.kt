@@ -6,10 +6,7 @@ import com.example.elizarchat.data.local.entity.ParticipantRole
 import com.example.elizarchat.data.remote.dto.ChatDto
 import com.example.elizarchat.data.remote.dto.ChatWithParticipantsDto
 import com.example.elizarchat.data.remote.dto.MessageDto
-import com.example.elizarchat.domain.model.Chat
-import com.example.elizarchat.domain.model.ChatType
-import com.example.elizarchat.domain.model.MessagePreview
-import com.example.elizarchat.domain.model.MessageType
+import com.example.elizarchat.domain.model.*
 import java.time.Instant
 import java.time.format.DateTimeParseException
 
@@ -88,9 +85,11 @@ object ChatMapper {
             MessagePreview(
                 id = it.id.toString(),
                 content = it.content,
+                senderId = it.senderId.toString(), // Добавлено
                 senderName = getSenderName(it.senderId, participants),
                 timestamp = parseInstant(it.createdAt) ?: Instant.now(),
-                type = parseMessageType(it.type)
+                type = parseMessageType(it.type),
+                status = parseMessageStatus(it.status) // Добавлено
             )
         }
 
@@ -138,12 +137,25 @@ object ChatMapper {
 
     private fun parseMessageType(typeString: String): MessageType {
         return when (typeString.lowercase()) {
+            "text" -> MessageType.TEXT
             "image" -> MessageType.IMAGE
             "video" -> MessageType.VIDEO
             "audio" -> MessageType.AUDIO
             "file" -> MessageType.FILE
             "system" -> MessageType.SYSTEM
             else -> MessageType.TEXT
+        }
+    }
+
+    private fun parseMessageStatus(statusString: String): MessageStatus {
+        return when (statusString.lowercase()) {
+            "sending" -> MessageStatus.SENDING
+            "sent" -> MessageStatus.SENT
+            "delivered" -> MessageStatus.DELIVERED
+            "read" -> MessageStatus.READ
+            "failed" -> MessageStatus.FAILED
+            "deleted" -> MessageStatus.DELETED
+            else -> MessageStatus.SENT
         }
     }
 
