@@ -83,6 +83,7 @@ dependencies {
     implementation("com.jakewharton.retrofit:retrofit2-kotlinx-serialization-converter:1.0.0")
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging.interceptor)
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
 
     // ViewModel и LiveData
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
