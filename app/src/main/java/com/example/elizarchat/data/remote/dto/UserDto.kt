@@ -3,89 +3,47 @@ package com.example.elizarchat.data.remote.dto
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+// ============ USER DTOs ============
 @Serializable
 data class UserDto(
-    @SerialName("id")
-    val id: Long,
-
-    @SerialName("username")
-    val username: String,
-
-    @SerialName("email")
-    val email: String? = null,
-
-    @SerialName("displayName")
-    val displayName: String? = null,
-
-    @SerialName("avatarUrl")
-    val avatarUrl: String? = null,
-
-    @SerialName("isOnline")
-    val isOnline: Boolean = false,
-
-    @SerialName("lastSeen")
-    val lastSeen: String? = null,
-
-    @SerialName("createdAt")
-    val createdAt: String? = null
+    @SerialName("id") val id: Int,
+    @SerialName("username") val username: String,
+    @SerialName("email") val email: String,
+    @SerialName("display_name") val displayName: String? = null,
+    @SerialName("avatar_url") val avatarUrl: String? = null,
+    @SerialName("bio") val bio: String? = null,
+    @SerialName("status") val status: String? = null,
+    @SerialName("is_online") val isOnline: Boolean = false,
+    @SerialName("last_seen") val lastSeen: String? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("settings") val settings: String? = null  // JSON строка
 )
 
-/**
- * Ответ на запрос аутентификации
- */
+// ============ USER OPERATIONS ============
 @Serializable
-data class AuthResponseDto(
-    @SerialName("message")
-    val message: String? = null,
-
-    @SerialName("user")
-    val user: UserDto,
-
-    @SerialName("token")
-    val token: String
+data class UpdateProfileRequest(
+    @SerialName("display_name") val displayName: String? = null,
+    @SerialName("avatar_url") val avatarUrl: String? = null,
+    @SerialName("bio") val bio: String? = null,
+    @SerialName("status") val status: String? = null
 )
 
-/**
- * Ответ на поиск пользователей
- */
+// ChangePasswordRequest оставляем только здесь (snake_case)
 @Serializable
-data class UsersResponseDto(
-    @SerialName("users")
-    val users: List<UserDto> = emptyList()
-)
-
-/**
- * Запрос на регистрацию
- */
-@Serializable
-data class RegisterRequestDto(
-    @SerialName("username")
-    val username: String,
-
-    @SerialName("password")
-    val password: String,
-
-    @SerialName("email")
-    val email: String? = null,
-
-    @SerialName("displayName")
-    val displayName: String? = null
-)
-
-/**
- * Запрос на вход
- */
-@Serializable
-data class LoginRequestDto(
-    @SerialName("username")
-    val username: String,
-
-    @SerialName("password")
-    val password: String
+data class ChangePasswordRequest(
+    @SerialName("current_password") val currentPassword: String,
+    @SerialName("new_password") val newPassword: String
 )
 
 @Serializable
-data class UserResponseDto(
-    @SerialName("user")
-    val user: UserDto
+data class UpdateSettingsRequest(
+    @SerialName("settings") val settings: String  // JSON строка
+)
+
+// ============ LOCAL SETTINGS ============
+@Serializable
+data class UserSettings(
+    @SerialName("notifications") val notifications: Boolean = true,
+    @SerialName("theme") val theme: String = "light",
+    @SerialName("language") val language: String = "en"
 )

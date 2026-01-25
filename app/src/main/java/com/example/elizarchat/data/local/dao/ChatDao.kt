@@ -2,81 +2,116 @@ package com.example.elizarchat.data.local.dao
 
 import androidx.room.*
 import com.example.elizarchat.data.local.entity.ChatEntity
-import com.example.elizarchat.data.local.entity.ChatParticipantEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ChatDao {
 
-    // === ChatEntity операции ===
-
+    // === CREATE ===
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(chat: ChatEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(chats: List<ChatEntity>)
 
+    // === READ ===
     @Query("SELECT * FROM chats WHERE id = :chatId")
     suspend fun getChatById(chatId: String): ChatEntity?
 
     @Query("SELECT * FROM chats WHERE id = :chatId")
     fun observeChatById(chatId: String): Flow<ChatEntity?>
 
-    // Все чаты с сортировкой по последнему сообщению
-    @Query("SELECT * FROM chats ORDER BY " +
-            "CASE WHEN lastMessageAt IS NULL THEN createdAt ELSE lastMessageAt END DESC")
+    // Все чаты с сортировкой по обновлению
+    @Query("""
+        SELECT * FROM chats 
+        WHERE is_deleted = false
+        ORDER BY 
+            CASE 
+                WHEN updated_at IS NOT NULL THEN updated_at 
+                ELSE created_at 
+            END DESC
+    """)
     fun observeAllChats(): Flow<List<ChatEntity>>
 
-    // Чаты, где пользователь является участником
+    // Чаты определенного типа
+    @Query("SELECT * FROM chats WHERE type = :type AND is_deleted = false ORDER BY updated_at DESC")
+    fun observeChatsByType(type: String): Flow<List<ChatEntity>>
+
+    // Приватный чат между двумя пользователями
     @Query("""
         SELECT c.* FROM chats c
-        INNER JOIN chat_participants cp ON c.id = cp.chatId
-        WHERE cp.userId = :userId
-        ORDER BY 
-        CASE WHEN c.lastMessageAt IS NULL THEN c.createdAt ELSE c.lastMessageAt END DESC
+        INNER JOIN chat_members cm1 ON c.id = cm1.chat_id
+        INNER JOIN chat_members cm2 ON c.id = cm2.chat_id
+        WHERE c.type = 'private'
+        AND cm1.user_id = :userId1
+        AND cm2.user_id = :userId2
+        AND (SELECT COUNT(*) FROM chat_members WHERE chat_id = c.id) = 2
+        LIMIT 1
     """)
-    fun observeChatsForUser(userId: String): Flow<List<ChatEntity>>
+    suspend fun getPrivateChatBetween(userId1: String, userId2: String): ChatEntity?
 
-    // Поиск чатов по названию
-    @Query("SELECT * FROM chats WHERE name LIKE '%' || :query || '%'")
+    // Поиск чатов
+    @Query("""
+        SELECT * FROM chats 
+        WHERE (name LIKE '%' || :query || '%' OR description LIKE '%' || :query || '%')
+        AND is_deleted = false
+        ORDER BY updated_at DESC
+    """)
     suspend fun searchChats(query: String): List<ChatEntity>
 
+    // Непрочитанные чаты
+    @Query("SELECT * FROM chats WHERE unread_count > 0 AND is_deleted = false")
+    fun observeUnreadChats(): Flow<List<ChatEntity>>
+
+    // Избранные чаты
+    @Query("SELECT * FROM chats WHERE is_pinned = true AND is_deleted = false ORDER BY updated_at DESC")
+    fun observePinnedChats(): Flow<List<ChatEntity>>
+
+    // Чат по последнему сообщению
+    @Query("SELECT * FROM chats WHERE last_message_id = :messageId")
+    suspend fun getChatByLastMessage(messageId: String): ChatEntity?
+
+    // === UPDATE ===
     @Update
     suspend fun update(chat: ChatEntity)
 
-    @Query("UPDATE chats SET lastMessageAt = :timestamp WHERE id = :chatId")
-    suspend fun updateLastMessageTime(chatId: String, timestamp: Long?)
+    @Query("UPDATE chats SET updated_at = :timestamp WHERE id = :chatId")
+    suspend fun updateTimestamp(chatId: String, timestamp: Long)  // Instant → Long
 
-    @Query("UPDATE chats SET unreadCount = :count WHERE id = :chatId")
+    @Query("UPDATE chats SET last_message_id = :messageId, updated_at = :timestamp WHERE id = :chatId")
+    suspend fun updateLastMessage(chatId: String, messageId: String, timestamp: Long)  // Instant → Long
+
+    @Query("UPDATE chats SET unread_count = :count WHERE id = :chatId")
     suspend fun updateUnreadCount(chatId: String, count: Int)
 
+    @Query("UPDATE chats SET is_muted = :muted WHERE id = :chatId")
+    suspend fun updateMutedStatus(chatId: String, muted: Boolean)
+
+    @Query("UPDATE chats SET is_pinned = :pinned WHERE id = :chatId")
+    suspend fun updatePinnedStatus(chatId: String, pinned: Boolean)
+
+    @Query("UPDATE chats SET name = :name, description = :description, updated_at = :timestamp WHERE id = :chatId")
+    suspend fun updateChatInfo(chatId: String, name: String?, description: String?, timestamp: Long)  // Instant → Long
+
+    // Увеличить счетчик непрочитанных
+    @Query("UPDATE chats SET unread_count = unread_count + 1, updated_at = :timestamp WHERE id = :chatId")
+    suspend fun incrementUnreadCount(chatId: String, timestamp: Long)  // Instant → Long
+
+    // Сбросить счетчик непрочитанных
+    @Query("UPDATE chats SET unread_count = 0 WHERE id = :chatId")
+    suspend fun resetUnreadCount(chatId: String)
+
+    // === DELETE ===
     @Delete
     suspend fun delete(chat: ChatEntity)
 
-    // === ChatParticipantEntity операции ===
+    @Query("DELETE FROM chats WHERE id = :chatId")
+    suspend fun deleteById(chatId: String)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertParticipant(participant: ChatParticipantEntity)
+    // Мягкое удаление
+    @Query("UPDATE chats SET is_deleted = true, updated_at = :timestamp WHERE id = :chatId")
+    suspend fun markAsDeleted(chatId: String, timestamp: Long = System.currentTimeMillis())  // Instant → Long
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAllParticipants(participants: List<ChatParticipantEntity>)
-
-    @Query("SELECT * FROM chat_participants WHERE chatId = :chatId")
-    suspend fun getParticipantsForChat(chatId: String): List<ChatParticipantEntity>
-
-    @Query("SELECT * FROM chat_participants WHERE userId = :userId")
-    suspend fun getChatsForUser(userId: String): List<ChatParticipantEntity>
-
-    @Query("DELETE FROM chat_participants WHERE chatId = :chatId AND userId = :userId")
-    suspend fun removeParticipant(chatId: String, userId: String)
-
-    @Query("DELETE FROM chat_participants WHERE chatId = :chatId")
-    suspend fun removeAllParticipants(chatId: String)
-
-    // Полная очистка
     @Query("DELETE FROM chats")
-    suspend fun deleteAllChats()
-
-    @Query("DELETE FROM chat_participants")
-    suspend fun deleteAllParticipants()
+    suspend fun deleteAll()
 }

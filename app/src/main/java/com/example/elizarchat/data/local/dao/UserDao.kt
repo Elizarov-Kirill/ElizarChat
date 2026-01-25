@@ -27,15 +27,43 @@ interface UserDao {
     @Query("SELECT * FROM users WHERE email = :email")
     suspend fun getUserByEmail(email: String): UserEntity?
 
+    // === НОВЫЕ МЕТОДЫ ДЛЯ СЕРВЕРНЫХ ПОЛЕЙ ===
+
+    // Поиск по биографии и статусу
+    @Query("SELECT * FROM users WHERE bio LIKE '%' || :query || '%' OR status LIKE '%' || :query || '%'")
+    suspend fun searchInBioAndStatus(query: String): List<UserEntity>
+
+    // Онлайн пользователи
+    @Query("SELECT * FROM users WHERE isOnline = 1")
+    suspend fun getOnlineUsers(): List<UserEntity>
+
+    @Query("SELECT * FROM users WHERE isOnline = 1")
+    fun observeOnlineUsers(): Flow<List<UserEntity>>
+
+    // Пользователи с определенным статусом
+    @Query("SELECT * FROM users WHERE status = :status")
+    suspend fun getUsersByStatus(status: String): List<UserEntity>
+
+    // === МЕТОДЫ ДЛЯ ЛОКАЛЬНЫХ ПОЛЕЙ ===
+
     // Контакты
-    @Query("SELECT * FROM users WHERE isContact = 1 ORDER BY " +
-            "CASE WHEN displayName IS NOT NULL THEN displayName ELSE username END")
+    @Query("SELECT * FROM users WHERE isContact = 1 ORDER BY COALESCE(displayName, username)")
     fun observeContacts(): Flow<List<UserEntity>>
 
-    // Поиск
+    // Избранные
+    @Query("SELECT * FROM users WHERE isFavorite = 1")
+    fun observeFavorites(): Flow<List<UserEntity>>
+
+    // Заблокированные
+    @Query("SELECT * FROM users WHERE isBlocked = 1")
+    fun observeBlockedUsers(): Flow<List<UserEntity>>
+
+    // Поиск по всем полям
     @Query("SELECT * FROM users WHERE username LIKE '%' || :query || '%' OR " +
             "displayName LIKE '%' || :query || '%' OR " +
-            "email LIKE '%' || :query || '%'")
+            "email LIKE '%' || :query || '%' OR " +
+            "bio LIKE '%' || :query || '%' OR " +
+            "status LIKE '%' || :query || '%'")
     suspend fun searchUsers(query: String): List<UserEntity>
 
     // === UPDATE ===
@@ -43,7 +71,17 @@ interface UserDao {
     suspend fun update(user: UserEntity)
 
     @Query("UPDATE users SET isOnline = :isOnline, lastSeen = :lastSeen WHERE id = :userId")
-    suspend fun updateStatus(userId: String, isOnline: Boolean, lastSeen: Long?)
+    suspend fun updateStatus(userId: String, isOnline: Boolean, lastSeen: Long?)  // Instant? → Long?
+
+    // Обновление локальных полей
+    @Query("UPDATE users SET isContact = :isContact WHERE id = :userId")
+    suspend fun updateContactStatus(userId: String, isContact: Boolean)
+
+    @Query("UPDATE users SET isFavorite = :isFavorite WHERE id = :userId")
+    suspend fun updateFavoriteStatus(userId: String, isFavorite: Boolean)
+
+    @Query("UPDATE users SET isBlocked = :isBlocked WHERE id = :userId")
+    suspend fun updateBlockedStatus(userId: String, isBlocked: Boolean)
 
     // === DELETE ===
     @Delete

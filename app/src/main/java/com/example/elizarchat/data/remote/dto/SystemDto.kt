@@ -5,39 +5,18 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class HealthResponse(
-    @SerialName("status")
-    val status: String,
+    @SerialName("success")
+    val success: Boolean,
+
+    @SerialName("message")
+    val message: String,
 
     @SerialName("timestamp")
-    val timestamp: String,
-
-    @SerialName("service")
-    val service: String,
-
-    @SerialName("version")
-    val version: String,
-
-    @SerialName("services")
-    val services: ServicesStatus? = null
-)
-
-@Serializable
-data class ServicesStatus(
-    @SerialName("database")
-    val database: Boolean = false,
-
-    @SerialName("redis")
-    val redis: Boolean = false,
-
-    @SerialName("storage")
-    val storage: Boolean = false
+    val timestamp: String
 )
 
 @Serializable
 data class ServerInfoResponse(
-    @SerialName("name")
-    val name: String,
-
     @SerialName("version")
     val version: String,
 
@@ -45,5 +24,17 @@ data class ServerInfoResponse(
     val environment: String,
 
     @SerialName("uptime")
-    val uptime: String? = null
+    val uptime: String? = null,
+
+    @SerialName("database")
+    val database: DatabaseStatus? = null
+)
+
+@Serializable
+data class DatabaseStatus(
+    @SerialName("connected")
+    val connected: Boolean,
+
+    @SerialName("latency")
+    val latency: Long? = null
 )

@@ -4,23 +4,25 @@ import java.time.Instant
 
 /**
  * Domain модель чата.
- * Чистый Kotlin, без аннотаций библиотек.
+ * Обновлена согласно серверной спецификации.
  */
 data class Chat(
     val id: String,
-    val name: String? = null,          // null для личных чатов
     val type: ChatType,
+    val name: String? = null,
+    val description: String? = null,
     val avatarUrl: String? = null,
     val createdBy: String,             // User ID создателя
     val createdAt: Instant,
+    val updatedAt: Instant? = null,
+    val lastMessageId: String? = null, // ID последнего сообщения
 
-    // Динамические данные
-    val lastMessageAt: Instant? = null,
+    // Локальные поля (не с сервера)
     val unreadCount: Int = 0,
-
-    // Отношения
-    val participants: List<User> = emptyList(),
-    val lastMessage: MessagePreview? = null
+    val isMuted: Boolean = false,
+    val isPinned: Boolean = false,
+    val participants: List<ChatMember> = emptyList(),
+    val lastMessage: Message? = null
 ) {
     /**
      * Вычисляемое свойство для отображения названия чата в UI.
@@ -29,45 +31,78 @@ data class Chat(
     fun displayName(currentUserId: String?): String = when (type) {
         ChatType.PRIVATE -> {
             // Для личных чатов показываем имя собеседника
-            participants.firstOrNull { it.id != currentUserId }?.displayNameOrUsername
+            participants.firstOrNull { it.user.id != currentUserId }?.user?.displayNameOrUsername
                 ?: name ?: "Unknown"
         }
         else -> name ?: "Group Chat"
     }
 
     /**
-     * Краткое описание для UI (участники или последнее сообщение)
+     * Проверяет, является ли чат групповым
      */
-    fun subtitle(currentUserId: String?): String = when {
-        lastMessage != null -> "${lastMessage.senderName}: ${lastMessage.content}"
-        participants.isNotEmpty() -> {
-            val participantNames = participants
-                .filter { it.id != currentUserId }
-                .take(3)
-                .joinToString(", ") { it.displayNameOrUsername }
-            if (participantNames.isNotEmpty()) participantNames else "No participants"
-        }
-        else -> "New chat"
-    }
+    val isGroupChat: Boolean
+        get() = type == ChatType.GROUP || type == ChatType.CHANNEL
 
     /**
      * Количество участников (исключая текущего пользователя)
      */
     fun participantCount(currentUserId: String?): Int =
-        participants.count { it.id != currentUserId }
+        participants.count { it.user.id != currentUserId }
 
     /**
      * Упрощенное свойство для UI: есть ли непрочитанные
      */
     val hasUnread: Boolean
         get() = unreadCount > 0
+
+    /**
+     * Время последней активности
+     */
+    val lastActivityAt: Instant?
+        get() = updatedAt ?: createdAt
 }
 
 /**
- * Типы чатов согласно твоей БД
+ * Типы чатов согласно серверной БД
  */
 enum class ChatType {
     PRIVATE,    // Личный чат (2 участника)
     GROUP,      // Групповой чат
     CHANNEL     // Канал (публичный)
 }
+
+/**
+ * Участник чата (связь многие-ко-многим)
+ */
+data class ChatMember(
+    val id: Long,
+    val chatId: String,
+    val user: User,
+    val role: MemberRole,
+    val joinedAt: Instant,
+    val lastReadMessageId: String? = null
+)
+
+/**
+ * Роли участников чата
+ */
+enum class MemberRole {
+    OWNER,    // Владелец
+    ADMIN,    // Администратор
+    MEMBER,   // Участник
+    GUEST     // Гость
+}
+
+/**
+ * Краткое представление чата для списков
+ */
+data class ChatPreview(
+    val id: String,
+    val name: String,
+    val type: ChatType,
+    val avatarUrl: String?,
+    val lastMessageText: String?,
+    val lastMessageTime: Instant?,
+    val unreadCount: Int,
+    val isMuted: Boolean
+)

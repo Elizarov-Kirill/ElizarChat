@@ -4,20 +4,23 @@ import java.time.Instant
 
 /**
  * ДОМЕННАЯ МОДЕЛЬ: Чистое представление пользователя для бизнес-логики.
- * Не содержит аннотаций Room или Retrofit.
- * Используется в UseCases, ViewModels и UI-слое.
+ * Обновлена согласно серверной спецификации.
  */
 data class User(
-    // Основной идентификатор (UUID с сервера)
-    val id: String,
+    // Основной идентификатор
+    val id: Int,
 
     // Обязательные поля
     val username: String,
-    val email: String?,
+    val email: String,
 
     // Опциональные поля (могут быть null)
     val displayName: String? = null,
     val avatarUrl: String? = null,
+
+    // НОВЫЕ поля с сервера
+    val bio: String? = null,
+    val statusText: String? = null, // текстовый статус пользователя
 
     // Статус онлайн/оффлайн
     val isOnline: Boolean = false,
@@ -26,8 +29,16 @@ data class User(
     // Метаданные
     val createdAt: Instant,
 
+    // НОВОЕ поле: настройки пользователя (JSON строка)
+    val settings: String? = null,
+
     // Локальные вычисляемые свойства (не приходят с сервера)
-    val isCurrentUser: Boolean = false
+    val isCurrentUser: Boolean = false,
+
+    // Локальные поля (только для клиента)
+    val isContact: Boolean = false,
+    val isBlocked: Boolean = false,
+    val isFavorite: Boolean = false
 ) {
     /**
      * Вычисляемое свойство для UI.
@@ -59,7 +70,7 @@ enum class UserStatus {
  * Краткое представление пользователя для списков.
  */
 data class UserPreview(
-    val id: String,
+    val id: Int,
     val username: String,
     val displayName: String?,
     val avatarUrl: String?,

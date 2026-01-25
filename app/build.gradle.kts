@@ -2,11 +2,9 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.kotlin.serialization)
 
-    kotlin("plugin.serialization") version "2.0.21"
-
-    // KSP плагин добавляем отдельно
-    id("com.google.devtools.ksp") version "2.0.21-1.0.27"
 }
 
 android {
@@ -36,11 +34,8 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
     kotlin {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) // [!code ++]
-        }
+        jvmToolchain(17)
     }
 
     buildFeatures {
@@ -48,15 +43,7 @@ android {
     }
 }
 
-ksp {
-    // Для Room
-    arg("room.schemaLocation", "$projectDir/schemas")
-    arg("room.incremental", "true")
-    arg("room.expandProjection", "true")
 
-    // Указываем совместимость с Kotlin 2.0
-    arg("kotlin.version", "2.0.21")
-}
 
 dependencies {
     // Базовые Android и Compose
@@ -71,12 +58,12 @@ dependencies {
     implementation("com.google.code.gson:gson:2.13.2")
 
     // Kotlin Serialization (убедитесь что версия актуальная)
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.0")
 
     // Room с KSP
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
-    ksp("androidx.room:room-compiler:2.6.1")// KSP вместо kapt
+    ksp(libs.androidx.room.compiler)// KSP вместо kapt
 
     // Retrofit с Kotlin Serialization Converter
     implementation(libs.retrofit)

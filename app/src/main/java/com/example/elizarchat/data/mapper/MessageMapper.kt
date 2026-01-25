@@ -1,157 +1,118 @@
 package com.example.elizarchat.data.mapper
 
 import com.example.elizarchat.data.local.entity.MessageEntity
-import com.example.elizarchat.data.remote.dto.AttachmentDto
 import com.example.elizarchat.data.remote.dto.MessageDto
-import com.example.elizarchat.domain.model.*
+import com.example.elizarchat.domain.model.Message
+import com.example.elizarchat.domain.model.MessageStatus
+import com.example.elizarchat.domain.model.MessageType
 import java.time.Instant
 import java.time.format.DateTimeParseException
 
-/**
- * Маппер для преобразований Message.
- */
 object MessageMapper {
 
-    // === Основные преобразования ===
-
-    fun dtoToDomain(
-        dto: MessageDto,
-        sender: User? = null,
-        chat: Chat? = null,
-        replyToMessage: Message? = null
-    ): Message {
-        val replyPreview = replyToMessage?.let {
-            MessagePreview(
-                id = it.id,
-                content = it.previewContent,
-                senderId = it.senderId,
-                senderName = it.sender?.displayNameOrUsername ?: "Unknown",
-                timestamp = it.createdAt,
-                type = it.type,
-                status = it.status
-            )
-        }
-
-        return Message(
-            id = dto.id.toString(), // Long → String
-            chatId = dto.chatId.toString(), // Long → String
-            senderId = dto.senderId.toString(), // Long → String
-            content = dto.content,
-            type = parseMessageType(dto.type),
-            status = parseMessageStatus(dto.status),
-            createdAt = parseInstant(dto.createdAt) ?: Instant.now(),
-            updatedAt = parseInstant(dto.updatedAt),
-            sender = sender,
-            chat = chat,
-            attachments = dto.attachments?.map { attachmentDtoToDomain(it) } ?: emptyList(),
-            replyTo = replyPreview,
-            readBy = dto.readBy.map { it.toString() }
-        )
-    }
-
+    // === DTO → Entity ===
     fun dtoToEntity(dto: MessageDto): MessageEntity {
         return MessageEntity(
-            id = dto.id.toString(),
-            chatId = dto.chatId.toString(),
-            senderId = dto.senderId.toString(),
+            id = dto.id,
+            chatId = dto.chatId,
+            userId = dto.userId,
             content = dto.content,
-            type = parseMessageType(dto.type),
-            status = parseMessageStatus(dto.status),
+            messageType = dto.messageType,
+            metadata = dto.metadata,
+            isEdited = dto.isEdited,
+            isDeleted = dto.isDeleted,
             createdAt = parseInstant(dto.createdAt) ?: Instant.now(),
             updatedAt = parseInstant(dto.updatedAt),
-            attachmentsJson = null, // Пока не обрабатываем вложения
-            replyTo = dto.replyTo?.toString(),
-            readBy = dto.readBy, // List<Long>
-            syncStatus = MessageEntity.SyncStatus.SYNCED
+            // Локальные поля по умолчанию
+            status = "sent",
+            isSending = false,
+            isFailed = false,
+            localId = null,
+            replyTo = null,
+            syncStatus = "SYNCED"
         )
     }
 
-    fun entityToDomain(
-        entity: MessageEntity,
-        sender: User? = null,
-        chat: Chat? = null,
-        replyToMessage: Message? = null
-    ): Message {
-        val attachments = emptyList<Attachment>() // Пока пусто, т.к. не обрабатываем вложения
-
-        val replyPreview = replyToMessage?.let {
-            MessagePreview(
-                id = it.id,
-                content = it.previewContent,
-                senderId = it.senderId,
-                senderName = it.sender?.displayNameOrUsername ?: "Unknown",
-                timestamp = it.createdAt,
-                type = it.type,
-                status = it.status
-            )
-        }
-
+    // === Entity → Domain ===
+    fun entityToDomain(entity: MessageEntity): Message {
         return Message(
             id = entity.id,
             chatId = entity.chatId,
-            senderId = entity.senderId,
+            userId = entity.userId,
             content = entity.content,
-            type = entity.type,
-            status = entity.status,
+            messageType = parseMessageType(entity.messageType),
+            metadata = entity.metadata,
+            isEdited = entity.isEdited,
+            isDeleted = entity.isDeleted,
             createdAt = entity.createdAt,
             updatedAt = entity.updatedAt,
-            sender = sender,
-            chat = chat,
-            attachments = attachments,
-            replyTo = replyPreview,
-            readBy = entity.readBy.map { it.toString() }, // Long → String
+            // Локальные поля
+            status = parseMessageStatus(entity.status),
             isSending = entity.isSending,
             isFailed = entity.isFailed,
-            localId = entity.localId
+            localId = entity.localId,
+            replyTo = entity.replyTo
         )
     }
 
-    fun domainToEntity(
-        domain: Message,
-        syncStatus: MessageEntity.SyncStatus = MessageEntity.SyncStatus.SYNCED
-    ): MessageEntity {
+    // === DTO → Domain ===
+    fun dtoToDomain(dto: MessageDto): Message {
+        return Message(
+            id = dto.id,
+            chatId = dto.chatId,
+            userId = dto.userId,
+            content = dto.content,
+            messageType = parseMessageType(dto.messageType),
+            metadata = dto.metadata,
+            isEdited = dto.isEdited,
+            isDeleted = dto.isDeleted,
+            createdAt = parseInstant(dto.createdAt) ?: Instant.now(),
+            updatedAt = parseInstant(dto.updatedAt),
+            // Локальные поля по умолчанию
+            status = MessageStatus.SENT,
+            isSending = false,
+            isFailed = false,
+            localId = null,
+            replyTo = null
+        )
+    }
+
+    // === Domain → Entity ===
+    fun domainToEntity(domain: Message): MessageEntity {
         return MessageEntity(
             id = domain.id,
             chatId = domain.chatId,
-            senderId = domain.senderId,
+            userId = domain.userId,
             content = domain.content,
-            type = domain.type,
-            status = domain.status,
+            messageType = domain.messageType.name.lowercase(),
+            metadata = domain.metadata,
+            isEdited = domain.isEdited,
+            isDeleted = domain.isDeleted,
             createdAt = domain.createdAt,
             updatedAt = domain.updatedAt,
-            attachmentsJson = null, // Пока не обрабатываем
-            replyTo = domain.replyTo?.id,
-            readBy = domain.readBy.map { it.toLongOrNull() ?: 0L }.filter { it > 0 },
+            // Локальные поля
+            status = domain.status.name.lowercase(),
             isSending = domain.isSending,
             isFailed = domain.isFailed,
             localId = domain.localId,
-            syncStatus = syncStatus
+            replyTo = domain.replyTo,
+            syncStatus = when {
+                domain.isSending -> "PENDING_SEND"
+                domain.status == MessageStatus.ERROR -> "PENDING_SEND"
+                else -> "SYNCED"
+            }
         )
     }
 
     // === Вспомогательные методы ===
-
-    private fun attachmentDtoToDomain(dto: AttachmentDto): Attachment {
-        return Attachment(
-            id = dto.id,
-            url = dto.url,
-            type = parseAttachmentType(dto.type),
-            name = dto.name,
-            size = dto.size,
-            duration = dto.duration,
-            thumbnailUrl = dto.thumbnailUrl,
-            width = dto.width,
-            height = dto.height
-        )
-    }
 
     private fun parseMessageType(typeString: String): MessageType {
         return when (typeString.lowercase()) {
             "text" -> MessageType.TEXT
             "image" -> MessageType.IMAGE
             "video" -> MessageType.VIDEO
-            "audio" -> MessageType.AUDIO
             "file" -> MessageType.FILE
+            "voice" -> MessageType.VOICE
             "system" -> MessageType.SYSTEM
             else -> MessageType.TEXT
         }
@@ -163,18 +124,8 @@ object MessageMapper {
             "sent" -> MessageStatus.SENT
             "delivered" -> MessageStatus.DELIVERED
             "read" -> MessageStatus.READ
-            "failed" -> MessageStatus.FAILED
-            "deleted" -> MessageStatus.DELETED
+            "error" -> MessageStatus.ERROR
             else -> MessageStatus.SENT
-        }
-    }
-
-    private fun parseAttachmentType(typeString: String): AttachmentType {
-        return when (typeString.lowercase()) {
-            "image" -> AttachmentType.IMAGE
-            "video" -> AttachmentType.VIDEO
-            "audio" -> AttachmentType.AUDIO
-            else -> AttachmentType.FILE
         }
     }
 
@@ -183,81 +134,71 @@ object MessageMapper {
             isoString?.let { Instant.parse(it) }
         } catch (e: DateTimeParseException) {
             null
+        } catch (e: IllegalArgumentException) {
+            null
         }
     }
 
-    // === Для работы со списками ===
-
-    fun dtosToDomains(
-        dtos: List<MessageDto>,
-        sendersMap: Map<Long, User> = emptyMap(),
-        chatsMap: Map<Long, Chat> = emptyMap(),
-        repliesMap: Map<Long, Message> = emptyMap()
-    ): List<Message> {
-        return dtos.map { dto ->
-            dtoToDomain(
-                dto = dto,
-                sender = sendersMap[dto.senderId],
-                chat = chatsMap[dto.chatId],
-                replyToMessage = dto.replyTo?.let { repliesMap[it] }
-            )
-        }
-    }
-
-    fun entitiesToDomains(
-        entities: List<MessageEntity>,
-        sendersMap: Map<String, User> = emptyMap(),
-        chatsMap: Map<String, Chat> = emptyMap(),
-        repliesMap: Map<String, Message> = emptyMap()
-    ): List<Message> {
-        return entities.map { entity ->
-            entityToDomain(
-                entity = entity,
-                sender = sendersMap[entity.senderId],
-                chat = chatsMap[entity.chatId],
-                replyToMessage = entity.replyTo?.let { repliesMap[it] }
-            )
-        }
-    }
+    // === Пакетные преобразования ===
 
     fun dtosToEntities(dtos: List<MessageDto>): List<MessageEntity> {
         return dtos.map { dtoToEntity(it) }
     }
 
-    // === Для создания временных сообщений ===
-
-    fun createLocalMessage(
-        chatId: String,
-        senderId: String,
-        content: String,
-        type: MessageType = MessageType.TEXT,
-        localId: String = "local_${System.currentTimeMillis()}"
-    ): Message {
-        return Message(
-            id = localId,
-            chatId = chatId,
-            senderId = senderId,
-            content = content,
-            type = type,
-            status = MessageStatus.SENDING,
-            createdAt = Instant.now(),
-            updatedAt = Instant.now(),
-            isSending = true,
-            localId = localId
-        )
+    fun entitiesToDomains(entities: List<MessageEntity>): List<Message> {
+        return entities.map { entityToDomain(it) }
     }
 
-    // === Обновление статуса ===
+    fun dtosToDomains(dtos: List<MessageDto>): List<Message> {
+        return dtos.map { dtoToDomain(it) }
+    }
 
-    fun updateMessageStatus(
-        message: Message,
-        status: MessageStatus
-    ): Message {
-        return message.copy(
-            status = status,
-            updatedAt = Instant.now(),
-            isSending = status == MessageStatus.SENDING,
-            isFailed = status == MessageStatus.FAILED
+    fun domainsToEntities(domains: List<Message>): List<MessageEntity> {
+        return domains.map { domainToEntity(it) }
+    }
+
+    // === Создание временного сообщения ===
+
+    fun createTemporaryMessage(
+        localId: String,
+        chatId: String,
+        userId: String,
+        content: String,
+        messageType: MessageType = MessageType.TEXT,
+        metadata: String? = null,
+        replyTo: String? = null
+    ): Pair<Message, MessageEntity> {
+        val now = Instant.now()
+
+        val message = Message(
+            id = localId,
+            chatId = chatId,
+            userId = userId,
+            content = content,
+            messageType = messageType,
+            metadata = metadata,
+            createdAt = now,
+            status = MessageStatus.SENDING,
+            isSending = true,
+            localId = localId,
+            replyTo = replyTo
         )
+
+        val entity = MessageEntity(
+            id = localId,
+            chatId = chatId,
+            userId = userId,
+            content = content,
+            messageType = messageType.name.lowercase(),
+            metadata = metadata,
+            createdAt = now,
+            status = "sending",
+            isSending = true,
+            localId = localId,
+            replyTo = replyTo,
+            syncStatus = "PENDING_SEND"
+        )
+
+        return Pair(message, entity)
     }
 }

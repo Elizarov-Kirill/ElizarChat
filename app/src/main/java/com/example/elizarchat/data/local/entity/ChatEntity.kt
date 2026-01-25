@@ -1,41 +1,56 @@
 package com.example.elizarchat.data.local.entity
 
-import androidx.room.Entity
-import androidx.room.Index
-import androidx.room.PrimaryKey
-import com.example.elizarchat.domain.model.ChatType
+import androidx.room.*
+import com.example.elizarchat.data.local.converter.InstantConverter
 import java.time.Instant
 
-@Entity(
-    tableName = "chats",
-    indices = [
-        Index(value = ["createdBy"]), // Индекс для createdBy (частые запросы)
-        Index(value = ["lastMessageAt"]) // Для сортировки по последнему сообщению
-    ]
-)
+/**
+ * Entity чата для хранения в Room Database.
+ * Соответствует таблице 'chats' в PostgreSQL сервера.
+ */
+@Entity(tableName = "chats")
+@TypeConverters(InstantConverter::class)
 data class ChatEntity(
     @PrimaryKey
     val id: String,
 
-    // Основные данные
-    val name: String? = null,
-    val type: ChatType, // Теперь Room поймёт через ChatTypeConverter
-    val avatarUrl: String? = null,
-    val createdBy: String?,
-    val createdAt: Instant,
-    val lastMessageAt: Instant? = null,
+    @ColumnInfo(name = "type")
+    val type: String,  // "private", "group", "channel"
 
-    // Локальные поля
-    val isArchived: Boolean = false,
-    val isMuted: Boolean = false,
-    val isPinned: Boolean = false,
+    @ColumnInfo(name = "name")
+    val name: String? = null,
+
+    @ColumnInfo(name = "description")
+    val description: String? = null,
+
+    @ColumnInfo(name = "avatar_url")
+    val avatarUrl: String? = null,
+
+    @ColumnInfo(name = "created_by")
+    val createdBy: String,
+
+    @ColumnInfo(name = "created_at")
+    val createdAt: Instant,
+
+    @ColumnInfo(name = "updated_at")
+    val updatedAt: Instant? = null,
+
+    @ColumnInfo(name = "last_message_id")
+    val lastMessageId: String? = null,
+
+    // === ЛОКАЛЬНЫЕ ПОЛЯ (только для клиента) ===
+    @ColumnInfo(name = "unread_count")
     val unreadCount: Int = 0,
 
-    // Служебные поля
-    val lastUpdated: Instant = Instant.now(),
-    val syncStatus: SyncStatus = SyncStatus.SYNCED
-) {
-    enum class SyncStatus {
-        SYNCED, PENDING, DIRTY
-    }
-}
+    @ColumnInfo(name = "is_muted")
+    val isMuted: Boolean = false,
+
+    @ColumnInfo(name = "is_pinned")
+    val isPinned: Boolean = false,
+
+    @ColumnInfo(name = "last_sync_at")
+    val lastSyncAt: Instant = Instant.now(),
+
+    @ColumnInfo(name = "sync_status")
+    val syncStatus: String = "SYNCED" // SYNCED, PENDING, DIRTY
+)

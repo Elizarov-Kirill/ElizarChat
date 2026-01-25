@@ -1,30 +1,63 @@
 package com.example.elizarchat.data.remote.api
 
-import com.example.elizarchat.data.remote.dto.ChatDto
-import com.example.elizarchat.data.remote.dto.ChatWithParticipantsDto
-import com.example.elizarchat.data.remote.dto.ChatsResponseDto
-import com.example.elizarchat.data.remote.dto.CreateChatRequestDto
+import com.example.elizarchat.data.remote.dto.*
 import retrofit2.Response
-import retrofit2.http.Body
-import retrofit2.http.DELETE
-import retrofit2.http.GET
-import retrofit2.http.POST
-import retrofit2.http.PUT
-import retrofit2.http.Path
+import retrofit2.http.*
 
 interface ChatApi {
-    @GET("chats")
-    suspend fun getChats(): Response<ChatsResponseDto>
 
-    @GET("chats/{id}")
-    suspend fun getChat(@Path("id") id: Long): Response<ChatWithParticipantsDto>
-
+    /**
+     * POST /api/v1/chats
+     * Создание чата
+     */
     @POST("chats")
-    suspend fun createChat(@Body request: CreateChatRequestDto): Response<ChatWithParticipantsDto>
+    suspend fun createChat(
+        @Body request: CreateChatRequest
+    ): Response<ApiResponse<ChatDto>>
 
+    /**
+     * GET /api/v1/chats
+     * Получение списка чатов текущего пользователя
+     */
+    @GET("chats")
+    suspend fun getChats(): Response<ApiResponse<List<ChatDto>>>
+
+    /**
+     * GET /api/v1/chats/{id}
+     * Получение чата по ID
+     */
+    @GET("chats/{id}")
+    suspend fun getChatById(
+        @Path("id") id: String
+    ): Response<ApiResponse<ChatDto>>
+
+    /**
+     * PUT /api/v1/chats/{id}
+     * Обновление чата
+     */
     @PUT("chats/{id}")
-    suspend fun updateChat(@Path("id") id: Long, @Body chat: ChatDto): Response<ChatDto>
+    suspend fun updateChat(
+        @Path("id") id: String,
+        @Body request: UpdateChatRequest
+    ): Response<ApiResponse<ChatDto>>
 
-    @DELETE("chats/{id}")
-    suspend fun deleteChat(@Path("id") id: Long): Response<Unit>
+    /**
+     * POST /api/v1/chats/{id}/members
+     * Добавление участника в чат
+     */
+    @POST("chats/{id}/members")
+    suspend fun addMember(
+        @Path("id") id: String,
+        @Body request: AddMemberRequest
+    ): Response<ApiResponse<Unit>>
+
+    /**
+     * DELETE /api/v1/chats/{id}/members
+     * Удаление участника из чата
+     */
+    @DELETE("chats/{id}/members")
+    suspend fun removeMember(
+        @Path("id") id: String,
+        @Body request: RemoveMemberRequest
+    ): Response<ApiResponse<Unit>>
 }

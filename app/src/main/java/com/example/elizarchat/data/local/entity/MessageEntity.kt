@@ -1,17 +1,12 @@
 package com.example.elizarchat.data.local.entity
 
-import androidx.room.Entity
-import androidx.room.ForeignKey
-import androidx.room.PrimaryKey
-import androidx.room.TypeConverters
+import androidx.room.*
 import com.example.elizarchat.data.local.converter.InstantConverter
-import com.example.elizarchat.data.local.converter.StringListConverter
-import com.example.elizarchat.domain.model.MessageStatus
-import com.example.elizarchat.domain.model.MessageType
 import java.time.Instant
 
 /**
  * Entity для хранения сообщений в Room.
+ * Соответствует таблице 'messages' в PostgreSQL сервера.
  */
 @Entity(
     tableName = "messages",
@@ -19,46 +14,60 @@ import java.time.Instant
         ForeignKey(
             entity = ChatEntity::class,
             parentColumns = ["id"],
-            childColumns = ["chatId"],
+            childColumns = ["user_id"],
             onDelete = ForeignKey.CASCADE
         )
     ]
 )
-@TypeConverters(InstantConverter::class, StringListConverter::class)
+@TypeConverters(InstantConverter::class)
 data class MessageEntity(
     @PrimaryKey
+    @ColumnInfo(name = "id")
     val id: String,
 
+    @ColumnInfo(name = "chat_id")
     val chatId: String,
-    val senderId: String,
+
+    @ColumnInfo(name = "user_id")
+    val userId: Int,
+
+    @ColumnInfo(name = "content")
     val content: String,
-    val type: MessageType,
-    val status: MessageStatus,
+
+    @ColumnInfo(name = "message_type")
+    val messageType: String,  // "text", "image", "video", "file", "voice", "system"
+
+    @ColumnInfo(name = "metadata")
+    val metadata: String? = null,  // JSON строка (заменили attachmentsJson)
+
+    @ColumnInfo(name = "is_edited")
+    val isEdited: Boolean = false,
+
+    @ColumnInfo(name = "is_deleted")
+    val isDeleted: Boolean = false,
+
+    @ColumnInfo(name = "created_at")
     val createdAt: Instant,
+
+    @ColumnInfo(name = "updated_at")
     val updatedAt: Instant? = null,
 
-    // Вложения (храним как JSON)
-    val attachmentsJson: String? = null,
+    // === ЛОКАЛЬНЫЕ ПОЛЯ (только для клиента) ===
+    @ColumnInfo(name = "status")
+    val status: String = "sending",  // sending, sent, delivered, read, error
 
-    // ID сообщения, на которое отвечаем
-    val replyTo: String? = null,
-
-    // Прочитано пользователями
-    val readBy: List<Long> = emptyList(),
-
-    // Локальные флаги
+    @ColumnInfo(name = "is_sending")
     val isSending: Boolean = false,
+
+    @ColumnInfo(name = "is_failed")
     val isFailed: Boolean = false,
+
+    @ColumnInfo(name = "local_id")
     val localId: String? = null,
 
-    // Служебные поля
-    val syncStatus: SyncStatus = SyncStatus.SYNCED,
-    val lastUpdated: Instant = Instant.now()
-) {
-    enum class SyncStatus {
-        SYNCED,        // Синхронизировано с сервером
-        PENDING_SEND,  // Ожидает отправки
-        PENDING_EDIT,  // Ожидает редактирования
-        PENDING_DELETE // Ожидает удаления
-    }
-}
+    @ColumnInfo(name = "reply_to")
+    val replyTo: String? = null,
+
+    @ColumnInfo(name = "sync_status")
+    val syncStatus: String = "SYNCED"  // SYNCED, PENDING_SEND, PENDING_EDIT, PENDING_DELETE
+)
