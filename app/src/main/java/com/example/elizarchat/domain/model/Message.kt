@@ -5,72 +5,88 @@ import java.time.Instant
 /**
  * Domain модель сообщения.
  * Используется в бизнес-логике и UI.
+ * ID хранятся как String для гибкости, но конвертируются из/в Int.
  */
 data class Message(
-    val id: String,
-    val chatId: String,
-    val userId: String,  // Переименовали senderId → userId
+    // ============ СЕРВЕРНЫЕ ПОЛЯ ============
+    val id: String,                    // Конвертируется из Int
+    val chatId: String,                // Конвертируется из Int
+    val senderId: String,              // Конвертируется из Int (переименовано из userId!)
     val content: String,
-    val messageType: MessageType,
-    val metadata: String? = null,  // JSON строка
-    val isEdited: Boolean = false,
-    val isDeleted: Boolean = false,
+    val type: String,                  // "text", "image", "video", "file", "voice", "system"
+    val metadata: String? = null,      // JSON строка
+    val replyTo: String? = null,       // Конвертируется из Int? (ID сообщения)
+    val status: String? = null,        // "sending", "sent", "delivered", "read"
     val createdAt: Instant,
     val updatedAt: Instant? = null,
+    val deletedAt: Instant? = null,    // Мягкое удаление
+    val readBy: List<String> = emptyList(), // Список ID пользователей
 
-    // Локальные поля (не из API)
-    val status: MessageStatus = MessageStatus.SENT,
+    // ============ ЛОКАЛЬНЫЕ ПОЛЯ ============
+    val localStatus: MessageStatus = MessageStatus.SENT, // Локальный статус для UI
     val isSending: Boolean = false,
-    val isFailed: Boolean = false,
-    val localId: String? = null,
-    val replyTo: String? = null,
+    val localId: String? = null,       // Временный ID до синхронизации
+    val syncStatus: SyncStatus = SyncStatus.SYNCED,
 
-    // Отношения (опционально, загружаются отдельно)
-    val sender: User? = null
+    // ============ ОТНОШЕНИЯ (опционально) ============
+    val sender: User? = null,          // Загружается отдельно
+    val repliedMessage: Message? = null // Загружается отдельно
 ) {
     /**
      * Можно ли редактировать сообщение
      */
     val canEdit: Boolean
-        get() = messageType == MessageType.TEXT &&
-                !isDeleted &&
+        get() = type == "text" &&
+                deletedAt == null &&
                 !isSending &&
-                !isFailed
+                localStatus != MessageStatus.ERROR
 
     /**
      * Можно ли удалить сообщение
      */
     val canDelete: Boolean
-        get() = !isDeleted
+        get() = deletedAt == null
 
     /**
      * Это системное сообщение
      */
     val isSystemMessage: Boolean
-        get() = messageType == MessageType.SYSTEM
+        get() = type == "system"
+
+    /**
+     * Сообщение удалено
+     */
+    val isDeleted: Boolean
+        get() = deletedAt != null
 
     /**
      * Это мое сообщение (для текущего пользователя)
      */
     fun isMine(currentUserId: String): Boolean =
-        userId == currentUserId
+        senderId == currentUserId
 
     /**
      * Короткое содержание для превью
      */
     val previewContent: String
-        get() = when (messageType) {
-            MessageType.TEXT -> content.take(100)
-            MessageType.IMAGE -> "📷 Изображение"
-            MessageType.VIDEO -> "🎥 Видео"
-            MessageType.FILE -> "📎 Файл"
-            MessageType.VOICE -> "🎤 Голосовое"
-            MessageType.SYSTEM -> "⚙️ $content"
+        get() = when (type) {
+            "text" -> content.take(100)
+            "image" -> "📷 Изображение"
+            "video" -> "🎥 Видео"
+            "file" -> "📎 Файл"
+            "voice" -> "🎤 Голосовое"
+            "system" -> "⚙️ $content"
+            else -> content.take(50)
         }
+
+    /**
+     * Проверяет, прочитано ли сообщение пользователем
+     */
+    fun isReadBy(userId: String): Boolean = readBy.contains(userId)
 }
 
 /**
- * Статусы сообщения (локальные)
+ * Локальные статусы сообщения (для UI)
  */
 enum class MessageStatus {
     SENDING,     // Отправляется (локальный статус)
@@ -78,11 +94,4 @@ enum class MessageStatus {
     DELIVERED,   // Доставлено получателям
     READ,        // Прочитано получателями
     ERROR        // Ошибка отправки
-}
-
-/**
- * Типы сообщений
- */
-enum class MessageType {
-    TEXT, IMAGE, VIDEO, FILE, VOICE, SYSTEM
 }

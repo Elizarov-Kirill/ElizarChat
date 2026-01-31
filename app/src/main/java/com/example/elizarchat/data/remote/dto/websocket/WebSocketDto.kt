@@ -15,22 +15,31 @@ sealed class ClientMessage {
     @Serializable
     @SerialName("subscribe")
     data class Subscribe(
-        @SerialName("chatId") val chatId: Long
+        @SerialName("chat_id") val chatId: Int  // Изменено: Long → Int, snake_case
     ) : ClientMessage()
 
     @Serializable
     @SerialName("send_message")
     data class SendMessage(
-        @SerialName("chatId") val chatId: Long,
+        @SerialName("chat_id") val chatId: Int,  // Изменено: Long → Int, snake_case
         @SerialName("content") val content: String,
-        @SerialName("type") val type: String = "text"
+        @SerialName("type") val type: String = "text",
+        @SerialName("reply_to") val replyTo: Int? = null,  // Добавлено
+        @SerialName("metadata") val metadata: String? = null  // Добавлено
     ) : ClientMessage()
 
     @Serializable
     @SerialName("mark_read")
     data class MarkRead(
-        @SerialName("chatId") val chatId: Long,
-        @SerialName("messageIds") val messageIds: List<Long>
+        @SerialName("chat_id") val chatId: Int,  // Изменено: Long → Int, snake_case
+        @SerialName("message_ids") val messageIds: List<Int>  // Изменено: Long → Int, snake_case
+    ) : ClientMessage()
+
+    @Serializable
+    @SerialName("typing")
+    data class Typing(
+        @SerialName("chat_id") val chatId: Int,  // Изменено: Long → Int, snake_case
+        @SerialName("is_typing") val isTyping: Boolean = true  // Добавлено
     ) : ClientMessage()
 }
 
@@ -44,19 +53,27 @@ sealed class ServerMessage {
     ) : ServerMessage()
 
     @Serializable
+    @SerialName("message_updated")
+    data class MessageUpdated(
+        @SerialName("message") val message: MessageDto,
+        @SerialName("update_type") val updateType: String  // "content", "status", "read_by", "deleted"
+    ) : ServerMessage()  // Добавлено
+
+    @Serializable
     @SerialName("message_status")
     data class MessageStatus(
-        @SerialName("messageId") val messageId: Long,
-        @SerialName("status") val status: String,
-        @SerialName("updatedAt") val updatedAt: String
+        @SerialName("message_id") val messageId: Int,  // Изменено: Long → Int, snake_case
+        @SerialName("status") val status: String,      // "sending", "sent", "delivered", "read"
+        @SerialName("updated_at") val updatedAt: String  // snake_case
     ) : ServerMessage()
 
     @Serializable
     @SerialName("user_status")
     data class UserStatus(
-        @SerialName("userId") val userId: Long,
-        @SerialName("isOnline") val isOnline: Boolean,
-        @SerialName("lastSeen") val lastSeen: String?
+        @SerialName("user_id") val userId: Int,  // Изменено: Long → Int, snake_case
+        @SerialName("is_online") val isOnline: Boolean,  // snake_case
+        @SerialName("last_seen") val lastSeen: String?,  // snake_case
+        @SerialName("status") val status: String? = null  // "online", "offline", "busy", "away"
     ) : ServerMessage()
 
     @Serializable
@@ -66,12 +83,27 @@ sealed class ServerMessage {
     ) : ServerMessage()
 
     @Serializable
+    @SerialName("chat_updated")
+    data class ChatUpdated(
+        @SerialName("chat") val chat: ChatDto,
+        @SerialName("update_type") val updateType: String  // "name", "avatar", "members", "last_message"
+    ) : ServerMessage()  // Добавлено
+
+    @Serializable
+    @SerialName("user_typing")
+    data class UserTyping(
+        @SerialName("chat_id") val chatId: Int,  // Изменено: Long → Int, snake_case
+        @SerialName("user_id") val userId: Int,  // Изменено: Long → Int, snake_case
+        @SerialName("is_typing") val isTyping: Boolean  // Добавлено
+    ) : ServerMessage()
+
+    @Serializable
     @SerialName("notification")
     data class Notification(
         @SerialName("title") val title: String,
         @SerialName("body") val body: String,
-        @SerialName("chatId") val chatId: Long,
-        @SerialName("messageId") val messageId: Long
+        @SerialName("chat_id") val chatId: Int,  // Изменено: Long → Int, snake_case
+        @SerialName("message_id") val messageId: Int? = null  // Изменено: Long → Int, snake_case
     ) : ServerMessage()
 
     @Serializable
@@ -87,4 +119,14 @@ sealed class ServerMessage {
     data class Pong(
         @SerialName("timestamp") val timestamp: String
     ) : ServerMessage()
+
+    @Serializable
+    @SerialName("auth_required")
+    object AuthRequired : ServerMessage()  // Добавлено
+
+    @Serializable
+    @SerialName("auth_success")
+    data class AuthSuccess(
+        @SerialName("user_id") val userId: Int  // Изменено: Long → Int, snake_case
+    ) : ServerMessage()  // Добавлено
 }

@@ -9,13 +9,14 @@ espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.10.0"
 activityCompose = "1.12.1"
 composeBom = "2025.01.00"
+composeCompiler = "1.5.15"
 
 # НОВЫЕ версии (Room и другие)
 room = "2.7.0"
 gson = "2.10.1"
 coroutines = "1.8.0"
 lifecycle = "2.8.0" # Добавлена версия для lifecycle-компонентов
-ksp = "2.3.4"
+ksp = "2.3.5"
 retrofit = "2.9.0"
 okhttp = "4.12.0"
 

@@ -13,7 +13,10 @@ import java.time.Instant
     indices = [
         Index(value = ["chat_id", "user_id"], unique = true),
         Index(value = ["user_id"]),
-        Index(value = ["chat_id"])
+        Index(value = ["chat_id"]),
+        Index(value = ["role"]),
+        Index(value = ["joined_at"]),
+        Index(value = ["last_read_message_id"])
     ],
     foreignKeys = [
         ForeignKey(
@@ -27,32 +30,50 @@ import java.time.Instant
             parentColumns = ["id"],
             childColumns = ["user_id"],
             onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = MessageEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["last_read_message_id"],
+            onDelete = ForeignKey.SET_NULL
         )
     ]
 )
 @TypeConverters(InstantConverter::class)
 data class ChatMemberEntity(
-    @PrimaryKey(autoGenerate = true)
-    val id: Long = 0,
+    // ============ СЕРВЕРНЫЕ ПОЛЯ (синхронизированы с БД) ============
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: Int,  // SERIAL PRIMARY KEY (PostgreSQL) - изменено с Long на Int!
 
     @ColumnInfo(name = "chat_id")
-    val chatId: String,
+    val chatId: Int,  // INTEGER REFERENCES chats(id)
 
     @ColumnInfo(name = "user_id")
-    val userId: String,
+    val userId: Int,  // INTEGER REFERENCES users(id)
 
     @ColumnInfo(name = "role")
-    val role: String,  // "owner", "admin", "member", "guest"
+    val role: String,  // VARCHAR(20): 'owner', 'admin', 'member', 'guest'
 
     @ColumnInfo(name = "joined_at")
-    val joinedAt: Instant,
+    val joinedAt: Instant,  // TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+    @ColumnInfo(name = "unread_count")
+    val unreadCount: Int = 0,  // INTEGER DEFAULT 0 (добавлено!)
 
     @ColumnInfo(name = "last_read_message_id")
-    val lastReadMessageId: String? = null,
+    val lastReadMessageId: Int? = null,  // INTEGER REFERENCES messages(id)
 
-    @ColumnInfo(name = "created_at")
-    val createdAt: Instant = Instant.now(),
+    // ============ ЛОКАЛЬНЫЕ/СЛУЖЕБНЫЕ ПОЛЯ ============
+    @ColumnInfo(name = "notifications_enabled")
+    val notificationsEnabled: Boolean = true,
 
-    @ColumnInfo(name = "updated_at")
-    val updatedAt: Instant? = null
+    @ColumnInfo(name = "is_hidden")
+    val isHidden: Boolean = false,
+
+    @ColumnInfo(name = "last_sync_at")
+    val lastSyncAt: Instant = Instant.now(),
+
+    @ColumnInfo(name = "sync_status")
+    val syncStatus: String = "SYNCED"  // SYNCED, PENDING, DIRTY
 )

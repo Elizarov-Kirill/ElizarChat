@@ -4,15 +4,19 @@ import androidx.room.TypeConverter
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-class StringListConverter {
+/**
+ * Конвертер для преобразования List<Int> ↔ JSON строка
+ * Используется для поля read_by в сообщениях
+ */
+class IntListConverter {
 
     @TypeConverter
-    fun fromJson(json: String?): List<String> {
+    fun fromJson(json: String?): List<Int> {
         return if (json.isNullOrEmpty()) {
             emptyList()
         } else {
             try {
-                Json.decodeFromString<List<String>>(json)
+                Json.decodeFromString<List<Int>>(json)
             } catch (e: Exception) {
                 emptyList()
             }
@@ -20,7 +24,7 @@ class StringListConverter {
     }
 
     @TypeConverter
-    fun toJson(list: List<String>): String {
+    fun toJson(list: List<Int>): String {
         return try {
             Json.encodeToString(list)
         } catch (e: Exception) {

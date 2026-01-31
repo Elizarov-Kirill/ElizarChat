@@ -4,34 +4,39 @@ import java.time.Instant
 
 /**
  * Domain модель чата.
- * Обновлена согласно серверной спецификации.
+ * ID хранятся как String для гибкости, но конвертируются из/в Int.
  */
 data class Chat(
-    val id: String,
-    val type: ChatType,
+    // ============ СЕРВЕРНЫЕ ПОЛЯ ============
+    val id: String,                    // Конвертируется из Int
+    val type: String,                  // "private", "group", "channel"
     val name: String? = null,
-    val description: String? = null,
     val avatarUrl: String? = null,
-    val createdBy: String,             // User ID создателя
+    val createdBy: String,             // User ID создателя (конвертируется из Int)
     val createdAt: Instant,
     val updatedAt: Instant? = null,
-    val lastMessageId: String? = null, // ID последнего сообщения
+    val lastMessageAt: Instant? = null, // Когда было последнее сообщение
 
-    // Локальные поля (не с сервера)
-    val unreadCount: Int = 0,
+    // ============ ЛОКАЛЬНЫЕ ПОЛЯ ============
+    val lastMessageId: String? = null, // Локальная ссылка на последнее сообщение
     val isMuted: Boolean = false,
     val isPinned: Boolean = false,
+    val lastSyncAt: Instant = Instant.now(),
+    val syncStatus: SyncStatus = SyncStatus.SYNCED,
+
+    // ============ ОТНОШЕНИЯ (загружаются отдельно) ============
     val participants: List<ChatMember> = emptyList(),
-    val lastMessage: Message? = null
+    val lastMessage: Message? = null,
+    val creator: User? = null
 ) {
     /**
      * Вычисляемое свойство для отображения названия чата в UI.
      * Для групповых чатов - имя чата, для личных - имя собеседника.
      */
     fun displayName(currentUserId: String?): String = when (type) {
-        ChatType.PRIVATE -> {
+        "private" -> {
             // Для личных чатов показываем имя собеседника
-            participants.firstOrNull { it.user.id != currentUserId }?.user?.displayNameOrUsername
+            participants.firstOrNull { it.user?.id != currentUserId }?.user?.displayNameOrUsername
                 ?: name ?: "Unknown"
         }
         else -> name ?: "Group Chat"
@@ -41,57 +46,68 @@ data class Chat(
      * Проверяет, является ли чат групповым
      */
     val isGroupChat: Boolean
-        get() = type == ChatType.GROUP || type == ChatType.CHANNEL
+        get() = type == "group" || type == "channel"
+
+    /**
+     * Проверяет, является ли чат приватным
+     */
+    val isPrivateChat: Boolean
+        get() = type == "private"
 
     /**
      * Количество участников (исключая текущего пользователя)
      */
     fun participantCount(currentUserId: String?): Int =
-        participants.count { it.user.id != currentUserId }
+        participants.count { it.user?.id != currentUserId }
 
     /**
-     * Упрощенное свойство для UI: есть ли непрочитанные
+     * Общее количество непрочитанных сообщений для текущего пользователя
+     * (вычисляется из участников чата)
      */
-    val hasUnread: Boolean
-        get() = unreadCount > 0
+    fun unreadCountForUser(userId: String): Int =
+        participants.find { it.user?.id == userId }?.unreadCount ?: 0
 
     /**
      * Время последней активности
      */
     val lastActivityAt: Instant?
-        get() = updatedAt ?: createdAt
-}
+        get() = lastMessageAt ?: updatedAt ?: createdAt
 
-/**
- * Типы чатов согласно серверной БД
- */
-enum class ChatType {
-    PRIVATE,    // Личный чат (2 участника)
-    GROUP,      // Групповой чат
-    CHANNEL     // Канал (публичный)
+    /**
+     * Получает роль пользователя в чате
+     */
+    fun getUserRole(userId: String): String? =
+        participants.find { it.user?.id == userId }?.role
+
+    /**
+     * Проверяет, является ли пользователь участником чата
+     */
+    fun isUserMember(userId: String): Boolean =
+        participants.any { it.user?.id == userId }
 }
 
 /**
  * Участник чата (связь многие-ко-многим)
  */
 data class ChatMember(
-    val id: Long,
-    val chatId: String,
-    val user: User,
-    val role: MemberRole,
+    val id: String,                    // Конвертируется из Int (было Long)
+    val chatId: String,                // Конвертируется из Int
+    val userId: String,                // Конвертируется из Int
+    val role: String,                  // "owner", "admin", "member", "guest"
     val joinedAt: Instant,
-    val lastReadMessageId: String? = null
+    val unreadCount: Int = 0,          // Добавлено! Количество непрочитанных для этого участника
+    val lastReadMessageId: String? = null, // Конвертируется из Int?
+    val notificationsEnabled: Boolean = true,
+    val isHidden: Boolean = false,
+
+    // Отношения (загружаются отдельно)
+    val user: User? = null
 )
 
 /**
- * Роли участников чата
+ * Статус синхронизации
  */
-enum class MemberRole {
-    OWNER,    // Владелец
-    ADMIN,    // Администратор
-    MEMBER,   // Участник
-    GUEST     // Гость
-}
+
 
 /**
  * Краткое представление чата для списков
@@ -99,10 +115,11 @@ enum class MemberRole {
 data class ChatPreview(
     val id: String,
     val name: String,
-    val type: ChatType,
+    val type: String,
     val avatarUrl: String?,
     val lastMessageText: String?,
     val lastMessageTime: Instant?,
-    val unreadCount: Int,
-    val isMuted: Boolean
+    val unreadCount: Int = 0,          // Для текущего пользователя
+    val isMuted: Boolean = false,
+    val participantCount: Int = 0
 )

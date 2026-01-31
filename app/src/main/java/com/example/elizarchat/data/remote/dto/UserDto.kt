@@ -16,7 +16,9 @@ data class UserDto(
     @SerialName("is_online") val isOnline: Boolean = false,
     @SerialName("last_seen") val lastSeen: String? = null,
     @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null,  // Добавлено
     @SerialName("settings") val settings: String? = null  // JSON строка
+    // Примечание: password_hash не включаем - это серверное поле
 )
 
 // ============ USER OPERATIONS ============
@@ -28,7 +30,7 @@ data class UpdateProfileRequest(
     @SerialName("status") val status: String? = null
 )
 
-// ChangePasswordRequest оставляем только здесь (snake_case)
+// ChangePasswordRequest остается здесь (snake_case)
 @Serializable
 data class ChangePasswordRequest(
     @SerialName("current_password") val currentPassword: String,
@@ -46,4 +48,12 @@ data class UserSettings(
     @SerialName("notifications") val notifications: Boolean = true,
     @SerialName("theme") val theme: String = "light",
     @SerialName("language") val language: String = "en"
+)
+
+// ============ SEARCH ============
+@Serializable
+data class SearchUsersRequest(
+    @SerialName("query") val query: String,
+    @SerialName("page") val page: Int = 1,
+    @SerialName("limit") val limit: Int = 20
 )

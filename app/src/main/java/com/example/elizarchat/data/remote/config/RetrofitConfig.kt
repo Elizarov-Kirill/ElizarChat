@@ -17,7 +17,7 @@ object RetrofitConfig {
         ignoreUnknownKeys = true
         isLenient = true
         encodeDefaults = true
-        prettyPrint = BuildConfig.DEBUG
+        prettyPrint = true  // ← Убрали BuildConfig.DEBUG
     }
 
     private val contentType = "application/json".toMediaType()
@@ -25,7 +25,7 @@ object RetrofitConfig {
     // Клиент без авторизации (для регистрации/входа)
     fun createUnauthenticatedClient(): OkHttpClient {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = if (BuildConfig.DEBUG) {
+            level = if (isDebug()) {  // ← Используем функцию isDebug()
                 HttpLoggingInterceptor.Level.BODY
             } else {
                 HttpLoggingInterceptor.Level.BASIC
@@ -46,7 +46,7 @@ object RetrofitConfig {
         tokenProvider: () -> String?
     ): OkHttpClient {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = if (BuildConfig.DEBUG) {
+            level = if (isDebug()) {  // ← Используем функцию isDebug()
                 HttpLoggingInterceptor.Level.BODY
             } else {
                 HttpLoggingInterceptor.Level.BASIC
@@ -83,15 +83,50 @@ object RetrofitConfig {
             .build()
     }
 
+    // Вспомогательная функция для проверки debug режима
+    private fun isDebug(): Boolean {
+        return try {
+            // Пытаемся использовать BuildConfig, если доступен
+            Class.forName("com.example.elizarchat.BuildConfig")
+                .getDeclaredField("DEBUG")
+                .get(null) as Boolean
+        } catch (e: Exception) {
+            // Если BuildConfig недоступен, используем AppConstants.Debug флаги
+            com.example.elizarchat.AppConstants.Debug.LOG_NETWORK
+        }
+    }
+
+    // Функция для получения версии приложения
+    private fun getAppVersion(): String {
+        return try {
+            Class.forName("com.example.elizarchat.BuildConfig")
+                .getDeclaredField("VERSION_NAME")
+                .get(null) as? String ?: "1.0.0"
+        } catch (e: Exception) {
+            "1.0.0"
+        }
+    }
+
     // Интерцепторы
     private class CommonHeadersInterceptor : Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response {
             val request = chain.request().newBuilder()
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
-                .header("User-Agent", "ElizaChat-Android/${BuildConfig.VERSION_NAME}")
+                .header("User-Agent", "ElizaChat-Android/${getAppVersionFromContext()}")
                 .build()
             return chain.proceed(request)
+        }
+
+        private fun getAppVersionFromContext(): String {
+            return try {
+                // Альтернативный способ получить версию
+                Class.forName("com.example.elizarchat.BuildConfig")
+                    .getDeclaredField("VERSION_NAME")
+                    .get(null) as? String ?: "1.0.0"
+            } catch (e: Exception) {
+                "1.0.0"
+            }
         }
     }
 

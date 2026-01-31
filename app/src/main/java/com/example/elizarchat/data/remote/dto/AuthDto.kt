@@ -14,39 +14,31 @@ data class RegisterRequest(
 
 @Serializable
 data class LoginRequest(
-    @SerialName("email") val email: String,  // На сервере принимает email ИЛИ username
+    @SerialName("email") val email: String,  // Принимает email ИЛИ username в этом поле
     @SerialName("password") val password: String
 )
 
 @Serializable
 data class RefreshTokenRequest(
-    @SerialName("refreshToken") val refreshToken: String
+    @SerialName("refresh_token") val refreshToken: String  // snake_case для сервера
 )
 
 @Serializable
 data class LogoutRequest(
-    @SerialName("refreshToken") val refreshToken: String
+    @SerialName("refresh_token") val refreshToken: String  // snake_case для сервера
 )
 
 // ============== ОТВЕТЫ ==============
 @Serializable
 data class TokenResponse(
-    @SerialName("accessToken") val accessToken: String,
-    @SerialName("refreshToken") val refreshToken: String,
-    @SerialName("expiresIn") val expiresIn: Long? = null
+    @SerialName("access_token") val accessToken: String,  // snake_case для сервера
+    @SerialName("refresh_token") val refreshToken: String,  // snake_case для сервера
+    @SerialName("expires_in") val expiresIn: Long? = null  // snake_case для сервера
 )
 
 @Serializable
 data class AuthResponse(
-    @SerialName("success") val success: Boolean,
-    @SerialName("message") val message: String? = null,
-    @SerialName("data") val data: TokenResponse? = null
-)
-
-@Serializable
-data class ErrorResponse(
-    @SerialName("success") val success: Boolean = false,
-    @SerialName("message") val message: String,
-    @SerialName("error") val error: String? = null,
-    @SerialName("details") val details: Map<String, String>? = null
+    @SerialName("access_token") val accessToken: String,  // snake_case для сервера
+    @SerialName("refresh_token") val refreshToken: String,  // snake_case для сервера
+    @SerialName("user") val user: UserDto  // Полная информация о пользователе
 )

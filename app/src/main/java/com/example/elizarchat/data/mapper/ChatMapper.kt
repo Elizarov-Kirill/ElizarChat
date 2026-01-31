@@ -1,35 +1,28 @@
 package com.example.elizarchat.data.mapper
 
 import com.example.elizarchat.data.local.entity.ChatEntity
-import com.example.elizarchat.data.local.entity.ChatMemberEntity
 import com.example.elizarchat.data.remote.dto.ChatDto
-import com.example.elizarchat.data.remote.dto.ChatMemberDto
 import com.example.elizarchat.domain.model.Chat
-import com.example.elizarchat.domain.model.ChatMember
-import com.example.elizarchat.domain.model.ChatType
-import com.example.elizarchat.domain.model.MemberRole
-import com.example.elizarchat.domain.model.Message
-import com.example.elizarchat.domain.model.MessageType
-import com.example.elizarchat.domain.model.User
+import com.example.elizarchat.domain.model.SyncStatus
 import java.time.Instant
 import java.time.format.DateTimeParseException
 
 object ChatMapper {
 
-    // === ЧАТ: DTO → Entity ===
-    fun chatDtoToEntity(dto: ChatDto): ChatEntity {
+    // === DTO → Entity ===
+    fun dtoToEntity(dto: ChatDto): ChatEntity {
         return ChatEntity(
+            // СЕРВЕРНЫЕ ПОЛЯ
             id = dto.id,
             type = dto.type,
             name = dto.name,
-            description = dto.description,
-            avatarUrl = null, // нет в серверном DTO
-            createdBy = dto.createdBy,
-            createdAt = parseInstant(dto.createdAt) ?: Instant.now(),
-            updatedAt = parseInstant(dto.updatedAt),
-            lastMessageId = dto.lastMessageId,
-            // Локальные поля по умолчанию
-            unreadCount = 0,
+            avatarUrl = dto.avatarUrl,      // Исправлено: avatar_url → avatarUrl
+            createdBy = dto.createdBy,      // Исправлено: created_by → createdBy
+            createdAt = parseInstant(dto.createdAt) ?: Instant.now(),  // Исправлено
+            updatedAt = parseInstant(dto.updatedAt),  // Исправлено
+            lastMessageAt = parseInstant(dto.lastMessageAt),  // Исправлено
+
+            // ЛОКАЛЬНЫЕ ПОЛЯ
             isMuted = false,
             isPinned = false,
             lastSyncAt = Instant.now(),
@@ -37,178 +30,78 @@ object ChatMapper {
         )
     }
 
-    // === ЧАТ: Entity → Domain ===
-    fun chatEntityToDomain(
-        entity: ChatEntity,
-        members: List<ChatMember> = emptyList(),
-        lastMessageText: String? = null
-    ): Chat {
+    // === Entity → Domain ===
+    fun entityToDomain(entity: ChatEntity): Chat {
         return Chat(
-            id = entity.id,
-            type = parseChatType(entity.type),
+            // СЕРВЕРНЫЕ ПОЛЯ
+            id = entity.id.toString(),
+            type = entity.type,
             name = entity.name,
-            description = entity.description,
             avatarUrl = entity.avatarUrl,
-            createdBy = entity.createdBy,
+            createdBy = entity.createdBy.toString(),
             createdAt = entity.createdAt,
             updatedAt = entity.updatedAt,
-            lastMessageId = entity.lastMessageId,
-            // Локальные поля
-            unreadCount = entity.unreadCount,
+            lastMessageAt = entity.lastMessageAt,
+
+            // ЛОКАЛЬНЫЕ ПОЛЯ
+            lastMessageId = entity.lastMessageId?.toString(),
             isMuted = entity.isMuted,
             isPinned = entity.isPinned,
-            participants = members,
-            lastMessage = lastMessageText?.let {
-                // Создаем заглушку для последнего сообщения
-                Message(
-                    id = entity.lastMessageId ?: "",
-                    chatId = entity.id,
-                    userId = "",
-                    content = it,
-                    messageType = MessageType.TEXT,
-                    createdAt = entity.updatedAt ?: entity.createdAt,
-                    updatedAt = entity.updatedAt
-                )
-            }
+            lastSyncAt = entity.lastSyncAt,
+            syncStatus = parseSyncStatus(entity.syncStatus)
         )
     }
 
-    // === ЧАТ: DTO → Domain ===
-    fun chatDtoToDomain(
-        dto: ChatDto,
-        members: List<ChatMember> = emptyList(),
-        lastMessageText: String? = null
-    ): Chat {
+    // === DTO → Domain ===
+    fun dtoToDomain(dto: ChatDto): Chat {
         return Chat(
-            id = dto.id,
-            type = parseChatType(dto.type),
+            // СЕРВЕРНЫЕ ПОЛЯ
+            id = dto.id.toString(),
+            type = dto.type,
             name = dto.name,
-            description = dto.description,
-            avatarUrl = null,
-            createdBy = dto.createdBy,
-            createdAt = parseInstant(dto.createdAt) ?: Instant.now(),
-            updatedAt = parseInstant(dto.updatedAt),
-            lastMessageId = dto.lastMessageId,
-            // Локальные поля по умолчанию
-            unreadCount = 0,
+            avatarUrl = dto.avatarUrl,      // Исправлено
+            createdBy = dto.createdBy.toString(),  // Исправлено
+            createdAt = parseInstant(dto.createdAt) ?: Instant.now(),  // Исправлено
+            updatedAt = parseInstant(dto.updatedAt),  // Исправлено
+            lastMessageAt = parseInstant(dto.lastMessageAt),  // Исправлено
+
+            // ЛОКАЛЬНЫЕ ПОЛЯ (по умолчанию)
             isMuted = false,
             isPinned = false,
-            participants = members,
-            lastMessage = lastMessageText?.let {
-                Message(
-                    id = dto.lastMessageId ?: "",
-                    chatId = dto.id,
-                    userId = "",
-                    content = it,
-                    messageType = MessageType.TEXT,
-                    createdAt = parseInstant(dto.updatedAt) ?: Instant.now(),
-                    updatedAt = parseInstant(dto.updatedAt)
-                )
-            }
+            lastSyncAt = Instant.now(),
+            syncStatus = SyncStatus.SYNCED
         )
     }
 
-    // === ЧАТ: Domain → Entity ===
-    fun chatDomainToEntity(domain: Chat): ChatEntity {
+    // === Domain → Entity ===
+    fun domainToEntity(domain: Chat): ChatEntity {
         return ChatEntity(
-            id = domain.id,
-            type = domain.type.name.lowercase(),
+            // СЕРВЕРНЫЕ ПОЛЯ
+            id = domain.id.toIntOrNull() ?: 0,
+            type = domain.type,
             name = domain.name,
-            description = domain.description,
             avatarUrl = domain.avatarUrl,
-            createdBy = domain.createdBy,
+            createdBy = domain.createdBy.toIntOrNull() ?: 0,
             createdAt = domain.createdAt,
             updatedAt = domain.updatedAt,
-            lastMessageId = domain.lastMessageId,
-            // Локальные поля
-            unreadCount = domain.unreadCount,
+            lastMessageAt = domain.lastMessageAt,
+
+            // ЛОКАЛЬНЫЕ ПОЛЯ
+            lastMessageId = domain.lastMessageId?.toIntOrNull(),
             isMuted = domain.isMuted,
             isPinned = domain.isPinned,
-            lastSyncAt = Instant.now(),
-            syncStatus = if (domain.isMuted || domain.isPinned || domain.unreadCount > 0) {
-                "DIRTY"
-            } else {
-                "SYNCED"
-            }
-        )
-    }
-
-    // === УЧАСТНИК: DTO → Entity ===
-    fun memberDtoToEntity(dto: ChatMemberDto): ChatMemberEntity {
-        return ChatMemberEntity(
-            id = dto.id,
-            chatId = dto.chatId,
-            userId = dto.userId,
-            role = dto.role,
-            joinedAt = parseInstant(dto.joinedAt) ?: Instant.now(),
-            lastReadMessageId = dto.lastReadMessageId,
-            createdAt = parseInstant(dto.createdAt) ?: Instant.now(),
-            updatedAt = parseInstant(dto.updatedAt)
-        )
-    }
-
-    // === УЧАСТНИК: Entity → Domain ===
-    fun memberEntityToDomain(
-        entity: ChatMemberEntity,
-        user: User
-    ): ChatMember {
-        return ChatMember(
-            id = entity.id,
-            chatId = entity.chatId,
-            user = user,
-            role = parseMemberRole(entity.role),
-            joinedAt = entity.joinedAt,
-            lastReadMessageId = entity.lastReadMessageId
-        )
-    }
-
-    // === УЧАСТНИК: DTO → Domain ===
-    fun memberDtoToDomain(
-        dto: ChatMemberDto,
-        user: User
-    ): ChatMember {
-        return ChatMember(
-            id = dto.id,
-            chatId = dto.chatId,
-            user = user,
-            role = parseMemberRole(dto.role),
-            joinedAt = parseInstant(dto.joinedAt) ?: Instant.now(),
-            lastReadMessageId = dto.lastReadMessageId
-        )
-    }
-
-    // === УЧАСТНИК: Domain → Entity ===
-    fun memberDomainToEntity(domain: ChatMember): ChatMemberEntity {
-        return ChatMemberEntity(
-            id = domain.id,
-            chatId = domain.chatId,
-            userId = domain.user.id,
-            role = domain.role.name.lowercase(),
-            joinedAt = domain.joinedAt,
-            lastReadMessageId = domain.lastReadMessageId,
-            createdAt = Instant.now(),
-            updatedAt = null
+            lastSyncAt = domain.lastSyncAt,
+            syncStatus = domain.syncStatus.toString()
         )
     }
 
     // === Вспомогательные методы ===
-
-    private fun parseChatType(typeString: String): ChatType {
-        return when (typeString.lowercase()) {
-            "private" -> ChatType.PRIVATE
-            "group" -> ChatType.GROUP
-            "channel" -> ChatType.CHANNEL
-            else -> ChatType.GROUP
-        }
-    }
-
-    private fun parseMemberRole(roleString: String): MemberRole {
-        return when (roleString.lowercase()) {
-            "owner" -> MemberRole.OWNER
-            "admin" -> MemberRole.ADMIN
-            "member" -> MemberRole.MEMBER
-            "guest" -> MemberRole.GUEST
-            else -> MemberRole.MEMBER
+    private fun parseSyncStatus(status: String): SyncStatus {
+        return when (status.uppercase()) {
+            "SYNCED" -> SyncStatus.SYNCED
+            "PENDING" -> SyncStatus.PENDING
+            "DIRTY" -> SyncStatus.DIRTY
+            else -> SyncStatus.SYNCED
         }
     }
 
@@ -217,82 +110,19 @@ object ChatMapper {
             isoString?.let { Instant.parse(it) }
         } catch (e: DateTimeParseException) {
             null
-        } catch (e: IllegalArgumentException) {
-            null
         }
     }
 
-    // === Пакетные преобразования ===
-
-    fun chatDtosToEntities(dtos: List<ChatDto>): List<ChatEntity> {
-        return dtos.map { chatDtoToEntity(it) }
+    // === Для массовой конвертации ===
+    fun dtosToEntities(dtos: List<ChatDto>): List<ChatEntity> {
+        return dtos.map { dtoToEntity(it) }
     }
 
-    fun chatEntitiesToDomains(
-        entities: List<ChatEntity>,
-        membersMap: Map<String, List<ChatMember>> = emptyMap(),
-        lastMessagesMap: Map<String, String> = emptyMap()
-    ): List<Chat> {
-        return entities.map { entity ->
-            chatEntityToDomain(
-                entity = entity,
-                members = membersMap[entity.id] ?: emptyList(),
-                lastMessageText = lastMessagesMap[entity.id]
-            )
-        }
+    fun entitiesToDomains(entities: List<ChatEntity>): List<Chat> {
+        return entities.map { entityToDomain(it) }
     }
 
-    fun chatDtosToDomains(
-        dtos: List<ChatDto>,
-        membersMap: Map<String, List<ChatMember>> = emptyMap(),
-        lastMessagesMap: Map<String, String> = emptyMap()
-    ): List<Chat> {
-        return dtos.map { dto ->
-            chatDtoToDomain(
-                dto = dto,
-                members = membersMap[dto.id] ?: emptyList(),
-                lastMessageText = lastMessagesMap[dto.id]
-            )
-        }
-    }
-
-    fun memberDtosToEntities(dtos: List<ChatMemberDto>): List<ChatMemberEntity> {
-        return dtos.map { memberDtoToEntity(it) }
-    }
-
-    fun memberEntitiesToDomains(
-        entities: List<ChatMemberEntity>,
-        usersMap: Map<String, User>
-    ): List<ChatMember> {
-        return entities.mapNotNull { entity ->
-            usersMap[entity.userId]?.let { user ->
-                memberEntityToDomain(entity, user)
-            }
-        }
-    }
-
-    // === Обновление сущностей ===
-
-    fun updateChatEntity(existing: ChatEntity, dto: ChatDto): ChatEntity {
-        return existing.copy(
-            name = dto.name ?: existing.name,
-            description = dto.description ?: existing.description,
-            updatedAt = parseInstant(dto.updatedAt) ?: existing.updatedAt,
-            lastMessageId = dto.lastMessageId ?: existing.lastMessageId,
-            lastSyncAt = Instant.now(),
-            syncStatus = if (existing.syncStatus == "DIRTY") {
-                "DIRTY"
-            } else {
-                "SYNCED"
-            }
-        )
-    }
-
-    fun updateMemberEntity(existing: ChatMemberEntity, dto: ChatMemberDto): ChatMemberEntity {
-        return existing.copy(
-            role = dto.role,
-            lastReadMessageId = dto.lastReadMessageId ?: existing.lastReadMessageId,
-            updatedAt = Instant.now()
-        )
+    fun dtosToDomains(dtos: List<ChatDto>): List<Chat> {
+        return dtos.map { dtoToDomain(it) }
     }
 }

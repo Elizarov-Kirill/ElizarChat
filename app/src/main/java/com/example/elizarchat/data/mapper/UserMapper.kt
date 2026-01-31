@@ -3,204 +3,168 @@ package com.example.elizarchat.data.mapper
 import com.example.elizarchat.data.local.entity.UserEntity
 import com.example.elizarchat.data.remote.dto.UserDto
 import com.example.elizarchat.domain.model.User
-import com.example.elizarchat.domain.model.UserPreview
+import com.example.elizarchat.domain.model.UserSettings
+import com.example.elizarchat.domain.model.SyncStatus
 import java.time.Instant
 import java.time.format.DateTimeParseException
 
-/**
- * Маппер для преобразования между всеми представлениями User.
- * Обновлен с учетом серверной спецификации.
- */
 object UserMapper {
 
-    // === Основные преобразования ===
-
-    fun dtoToDomain(dto: UserDto, isCurrentUser: Boolean = false): User {
-        return User(
-            id = dto.id.toString(), // Конвертируем в String
-            username = dto.username,
-            email = dto.email.orEmpty(),
-            displayName = dto.displayName.orEmpty(),
-            avatarUrl = dto.avatarUrl,
-            bio = dto.bio,
-            statusText = dto.status,
-            isOnline = dto.isOnline,
-            lastSeen = parseInstant(dto.lastSeen),
-            createdAt = parseInstant(dto.createdAt) ?: Instant.now(),
-            settings = dto.settings,
-            isCurrentUser = isCurrentUser,
-            // Локальные поля по умолчанию
-            isContact = false,
-            isBlocked = false,
-            isFavorite = false
-        )
-    }
-
+    // === DTO → Entity ===
     fun dtoToEntity(dto: UserDto): UserEntity {
         return UserEntity(
-            id = dto.id.toString(),
+            // СЕРВЕРНЫЕ ПОЛЯ
+            id = dto.id,
             username = dto.username,
-            email = dto.email.orEmpty(),
-            displayName = dto.displayName.orEmpty(),
-            avatarUrl = dto.avatarUrl,
+            email = dto.email,
+            displayName = dto.displayName,  // Исправлено: display_name → displayName
+            avatarUrl = dto.avatarUrl,      // Исправлено: avatar_url → avatarUrl
             bio = dto.bio,
             status = dto.status,
-            isOnline = dto.isOnline,
-            lastSeen = parseInstant(dto.lastSeen),
-            createdAt = parseInstant(dto.createdAt) ?: Instant.now(),
+            isOnline = dto.isOnline,        // Исправлено: is_online → isOnline
+            lastSeen = parseInstant(dto.lastSeen),  // Исправлено: last_seen → lastSeen
+            createdAt = parseInstant(dto.createdAt) ?: Instant.now(),  // Исправлено
+            updatedAt = parseInstant(dto.updatedAt),  // Исправлено: updated_at → updatedAt
             settings = dto.settings,
-            // Локальные поля по умолчанию
+
+            // ЛОКАЛЬНЫЕ ПОЛЯ (по умолчанию)
             isContact = false,
             contactNickname = null,
             isBlocked = false,
             isFavorite = false,
             lastUpdated = Instant.now(),
-            syncStatus = UserEntity.SyncStatus.SYNCED
+            syncStatus = "SYNCED"
         )
     }
 
-    fun entityToDomain(entity: UserEntity, isCurrentUser: Boolean = false): User {
+    // === Entity → Domain ===
+    fun entityToDomain(entity: UserEntity): User {
         return User(
-            id = entity.id,
+            // СЕРВЕРНЫЕ ПОЛЯ
+            id = entity.id.toString(),
             username = entity.username,
-            email = entity.email ?: "",
-            displayName = entity.displayName ?: "",
+            email = entity.email,
+            displayName = entity.displayName,
             avatarUrl = entity.avatarUrl,
             bio = entity.bio,
-            statusText = entity.status,
+            status = entity.status,
             isOnline = entity.isOnline,
             lastSeen = entity.lastSeen,
             createdAt = entity.createdAt,
-            settings = entity.settings,
-            isCurrentUser = isCurrentUser,
-            // Локальные поля из Entity
+            updatedAt = entity.updatedAt,
+            settingsJson = entity.settings,
+
+            // ЛОКАЛЬНЫЕ ПОЛЯ
+            isCurrentUser = false,
             isContact = entity.isContact,
             isBlocked = entity.isBlocked,
-            isFavorite = entity.isFavorite
+            isFavorite = entity.isFavorite,
+            lastSyncAt = entity.lastUpdated,
+            syncStatus = parseSyncStatus(entity.syncStatus),
+
+            // ВЫЧИСЛЯЕМЫЕ ПОЛЯ
+            settings = parseUserSettings(entity.settings)
         )
     }
 
+    // === DTO → Domain ===
+    fun dtoToDomain(dto: UserDto): User {
+        return User(
+            // СЕРВЕРНЫЕ ПОЛЯ
+            id = dto.id.toString(),
+            username = dto.username,
+            email = dto.email,
+            displayName = dto.displayName,  // Исправлено
+            avatarUrl = dto.avatarUrl,      // Исправлено
+            bio = dto.bio,
+            status = dto.status,
+            isOnline = dto.isOnline,        // Исправлено
+            lastSeen = parseInstant(dto.lastSeen),  // Исправлено
+            createdAt = parseInstant(dto.createdAt) ?: Instant.now(),  // Исправлено
+            updatedAt = parseInstant(dto.updatedAt),  // Исправлено
+            settingsJson = dto.settings,
+
+            // ЛОКАЛЬНЫЕ ПОЛЯ (по умолчанию)
+            isCurrentUser = false,
+            isContact = false,
+            isBlocked = false,
+            isFavorite = false,
+            lastSyncAt = Instant.now(),
+            syncStatus = SyncStatus.SYNCED,
+
+            // ВЫЧИСЛЯЕМЫЕ ПОЛЯ
+            settings = parseUserSettings(dto.settings)
+        )
+    }
+
+    // === Domain → Entity ===
     fun domainToEntity(domain: User): UserEntity {
         return UserEntity(
-            id = domain.id,
+            // СЕРВЕРНЫЕ ПОЛЯ
+            id = domain.id.toIntOrNull() ?: 0,
             username = domain.username,
             email = domain.email,
             displayName = domain.displayName,
             avatarUrl = domain.avatarUrl,
             bio = domain.bio,
-            status = domain.statusText,
+            status = domain.status,
             isOnline = domain.isOnline,
             lastSeen = domain.lastSeen,
             createdAt = domain.createdAt,
-            settings = domain.settings,
-            // Локальные поля из Domain
+            updatedAt = domain.updatedAt,
+            settings = domain.settingsJson,
+
+            // ЛОКАЛЬНЫЕ ПОЛЯ
             isContact = domain.isContact,
             contactNickname = null,
             isBlocked = domain.isBlocked,
             isFavorite = domain.isFavorite,
-            lastUpdated = Instant.now(),
-            syncStatus = if (domain.isContact || domain.isBlocked || domain.isFavorite) {
-                UserEntity.SyncStatus.DIRTY
-            } else {
-                UserEntity.SyncStatus.SYNCED
-            }
+            lastUpdated = domain.lastSyncAt,
+            syncStatus = domain.syncStatus.toString()
         )
     }
 
-    // === Работа со списками ===
-
-    fun dtosToDomains(dtos: List<UserDto>, currentUserId: String? = null): List<User> {
-        return dtos.map { dto ->
-            dtoToDomain(dto, isCurrentUser = dto.id.toString() == currentUserId)
-        }
-    }
-
-    fun entitiesToDomains(entities: List<UserEntity>, currentUserId: String? = null): List<User> {
-        return entities.map { entity ->
-            entityToDomain(entity, isCurrentUser = entity.id == currentUserId)
-        }
-    }
-
-    fun dtosToEntities(dtos: List<UserDto>): List<UserEntity> {
-        return dtos.map { dtoToEntity(it) }
-    }
-
-    fun domainsToEntities(domains: List<User>): List<UserEntity> {
-        return domains.map { domainToEntity(it) }
-    }
-
     // === Вспомогательные методы ===
+    private fun parseUserSettings(json: String?): UserSettings? {
+        return try {
+            if (json.isNullOrEmpty()) {
+                UserSettings()
+            } else {
+                // TODO: Реализовать парсинг JSON
+                UserSettings()
+            }
+        } catch (e: Exception) {
+            UserSettings()
+        }
+    }
+
+    private fun parseSyncStatus(status: String): SyncStatus {
+        return when (status.uppercase()) {
+            "SYNCED" -> SyncStatus.SYNCED
+            "PENDING" -> SyncStatus.PENDING
+            "DIRTY" -> SyncStatus.DIRTY
+            else -> SyncStatus.SYNCED
+        }
+    }
 
     private fun parseInstant(isoString: String?): Instant? {
         return try {
             isoString?.let { Instant.parse(it) }
         } catch (e: DateTimeParseException) {
             null
-        } catch (e: IllegalArgumentException) {
-            null
         }
     }
 
-    /**
-     * Обновляет существующую Entity новыми данными из DTO
-     * Сохраняет локальные поля (isContact, isBlocked, isFavorite)
-     */
-    fun updateEntity(existing: UserEntity, dto: UserDto): UserEntity {
-        return existing.copy(
-            username = dto.username,
-            email = dto.email ?: existing.email,
-            displayName = dto.displayName ?: existing.displayName,
-            avatarUrl = dto.avatarUrl ?: existing.avatarUrl,
-            bio = dto.bio ?: existing.bio,
-            status = dto.status ?: existing.status,
-            isOnline = dto.isOnline,
-            lastSeen = parseInstant(dto.lastSeen) ?: existing.lastSeen,
-            createdAt = parseInstant(dto.createdAt) ?: existing.createdAt,
-            settings = dto.settings ?: existing.settings,
-            lastUpdated = Instant.now(),
-            syncStatus = if (existing.syncStatus == UserEntity.SyncStatus.DIRTY) {
-                // Сохраняем DIRTY статус если были локальные изменения
-                UserEntity.SyncStatus.DIRTY
-            } else {
-                UserEntity.SyncStatus.SYNCED
-            }
-        )
+    // === Для массовой конвертации ===
+    fun dtosToEntities(dtos: List<UserDto>): List<UserEntity> {
+        return dtos.map { dtoToEntity(it) }
     }
 
-    /**
-     * Обновляет только локальные поля Entity
-     */
-    fun updateLocalFields(
-        entity: UserEntity,
-        isContact: Boolean? = null,
-        isBlocked: Boolean? = null,
-        isFavorite: Boolean? = null,
-        contactNickname: String? = null
-    ): UserEntity {
-        return entity.copy(
-            isContact = isContact ?: entity.isContact,
-            isBlocked = isBlocked ?: entity.isBlocked,
-            isFavorite = isFavorite ?: entity.isFavorite,
-            contactNickname = contactNickname ?: entity.contactNickname,
-            lastUpdated = Instant.now(),
-            syncStatus = UserEntity.SyncStatus.DIRTY
-        )
+    fun entitiesToDomains(entities: List<UserEntity>): List<User> {
+        return entities.map { entityToDomain(it) }
     }
 
-    /**
-     * Преобразует domain в UserPreview для списков
-     */
-    fun domainToPreview(domain: User): UserPreview {
-        return UserPreview(
-            id = domain.id,
-            username = domain.username,
-            displayName = domain.displayName,
-            avatarUrl = domain.avatarUrl,
-            isOnline = domain.isOnline
-        )
-    }
-
-    fun domainsToPreviews(domains: List<User>): List<UserPreview> {
-        return domains.map { domainToPreview(it) }
+    fun dtosToDomains(dtos: List<UserDto>): List<User> {
+        return dtos.map { dtoToDomain(it) }
     }
 }
