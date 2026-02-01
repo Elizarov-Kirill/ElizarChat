@@ -1,8 +1,7 @@
 package com.example.elizarchat.data.remote.config
 
-import android.content.Context
 import com.example.elizarchat.AppConstants
-import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -17,18 +16,21 @@ object RetrofitConfig {
         ignoreUnknownKeys = true
         isLenient = true
         encodeDefaults = true
-        prettyPrint = true  // ← Убрали BuildConfig.DEBUG
+        // УБРАНО: prettyPrint = true // Может конфликтовать с сервером
     }
 
     private val contentType = "application/json".toMediaType()
 
-    // Клиент без авторизации (для регистрации/входа)
+    // Клиент без авторизации
     fun createUnauthenticatedClient(): OkHttpClient {
+        println("=== RetrofitConfig: Создание клиента ===")
+        println("Base URL из AppConstants: ${AppConstants.API_BASE_URL}")
+
         val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = if (isDebug()) {  // ← Используем функцию isDebug()
+            level = if (AppConstants.Debug.LOG_NETWORK) {
                 HttpLoggingInterceptor.Level.BODY
             } else {
-                HttpLoggingInterceptor.Level.BASIC
+                HttpLoggingInterceptor.Level.NONE
             }
         }
 
@@ -46,10 +48,10 @@ object RetrofitConfig {
         tokenProvider: () -> String?
     ): OkHttpClient {
         val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = if (isDebug()) {  // ← Используем функцию isDebug()
+            level = if (AppConstants.Debug.LOG_NETWORK) {
                 HttpLoggingInterceptor.Level.BODY
             } else {
-                HttpLoggingInterceptor.Level.BASIC
+                HttpLoggingInterceptor.Level.NONE
             }
         }
 
@@ -64,10 +66,13 @@ object RetrofitConfig {
             .build()
     }
 
-    // Retrofit экземпляры
+    // Retrofit экземпляры - ИСПРАВЛЕНО: используем API_BASE_URL напрямую
     fun createUnauthenticatedRetrofit(): Retrofit {
+        println("=== RetrofitConfig: Создание Retrofit ===")
+        println("Используемый baseUrl: ${AppConstants.API_BASE_URL}")
+
         return Retrofit.Builder()
-            .baseUrl(AppConstants.API_BASE_URL)
+            .baseUrl(AppConstants.API_BASE_URL) // УБРАНА функция getBaseUrl()
             .client(createUnauthenticatedClient())
             .addConverterFactory(json.asConverterFactory(contentType))
             .build()
@@ -77,34 +82,10 @@ object RetrofitConfig {
         tokenProvider: () -> String?
     ): Retrofit {
         return Retrofit.Builder()
-            .baseUrl(AppConstants.API_BASE_URL)
+            .baseUrl(AppConstants.API_BASE_URL) // УБРАНА функция getBaseUrl()
             .client(createAuthenticatedClient(tokenProvider))
             .addConverterFactory(json.asConverterFactory(contentType))
             .build()
-    }
-
-    // Вспомогательная функция для проверки debug режима
-    private fun isDebug(): Boolean {
-        return try {
-            // Пытаемся использовать BuildConfig, если доступен
-            Class.forName("com.example.elizarchat.BuildConfig")
-                .getDeclaredField("DEBUG")
-                .get(null) as Boolean
-        } catch (e: Exception) {
-            // Если BuildConfig недоступен, используем AppConstants.Debug флаги
-            com.example.elizarchat.AppConstants.Debug.LOG_NETWORK
-        }
-    }
-
-    // Функция для получения версии приложения
-    private fun getAppVersion(): String {
-        return try {
-            Class.forName("com.example.elizarchat.BuildConfig")
-                .getDeclaredField("VERSION_NAME")
-                .get(null) as? String ?: "1.0.0"
-        } catch (e: Exception) {
-            "1.0.0"
-        }
     }
 
     // Интерцепторы
@@ -113,20 +94,10 @@ object RetrofitConfig {
             val request = chain.request().newBuilder()
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
-                .header("User-Agent", "ElizaChat-Android/${getAppVersionFromContext()}")
+                .header("User-Agent", "ElizaChat-Android/1.0.0")
                 .build()
+            println("Отправляется запрос к: ${chain.request().url}")
             return chain.proceed(request)
-        }
-
-        private fun getAppVersionFromContext(): String {
-            return try {
-                // Альтернативный способ получить версию
-                Class.forName("com.example.elizarchat.BuildConfig")
-                    .getDeclaredField("VERSION_NAME")
-                    .get(null) as? String ?: "1.0.0"
-            } catch (e: Exception) {
-                "1.0.0"
-            }
         }
     }
 
@@ -148,30 +119,16 @@ object RetrofitConfig {
 
     private class ErrorInterceptor : Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response {
-            val request = chain.request()
-            val response = chain.proceed(request)
-
-            if (!response.isSuccessful) {
-                // Можно добавить логику обработки ошибок
-                // Например, при 401 - refresh токена
-                when (response.code) {
-                    401 -> {
-                        // Токен истек или невалиден
-                        // Здесь можно вызвать refresh токена
-                    }
-                    403 -> {
-                        // Доступ запрещен
-                    }
-                    429 -> {
-                        // Слишком много запросов
-                    }
-                    500 -> {
-                        // Ошибка сервера
-                    }
+            try {
+                val response = chain.proceed(chain.request())
+                if (!response.isSuccessful) {
+                    println("HTTP ошибка: ${response.code} - ${response.message}")
                 }
+                return response
+            } catch (e: Exception) {
+                println("Сетевая ошибка: ${e.message}")
+                throw e
             }
-
-            return response
         }
     }
 }
