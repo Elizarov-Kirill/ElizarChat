@@ -14,12 +14,12 @@ object AppConstants {
 
     // ========== СЕРВЕРНЫЕ URL ==========
     // Доменные URL (когда USE_DOMAIN = true)
-    val API_BASE_URL_DOMAIN = "https://api.$SERVER_DOMAIN/api/v1"
+    val API_BASE_URL_DOMAIN = "https://api.$SERVER_DOMAIN/api/v1/"
     val WS_BASE_URL_DOMAIN = "wss://ws.$SERVER_DOMAIN"
 
     // IP URL (когда USE_DOMAIN = false или домен не настроен)
     val BASE_URL_IP = "http://$SERVER_IP:$API_PORT"
-    val API_BASE_URL_IP = "$BASE_URL_IP/api/v1"
+    val API_BASE_URL_IP = "$BASE_URL_IP/api/v1/"
     val WS_BASE_URL_IP = "ws://$SERVER_IP:$WS_PORT"
 
     // Активные URL (автоматический выбор)

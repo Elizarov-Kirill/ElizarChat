@@ -1,132 +1,392 @@
+// websocket/WebSocketDto.kt
 package com.example.elizarchat.data.remote.dto.websocket
 
-import com.example.elizarchat.data.remote.dto.ChatDto
-import com.example.elizarchat.data.remote.dto.MessageDto
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement  // ДОБАВЛЕНО
 
-// Сообщения от клиента к серверу
+// ============== ВХОДЯЩИЕ СООБЩЕНИЯ (клиент → сервер) ==============
+
 @Serializable
-sealed class ClientMessage {
-    @Serializable
-    @SerialName("ping")
-    object Ping : ClientMessage()
-
-    @Serializable
-    @SerialName("subscribe")
-    data class Subscribe(
-        @SerialName("chat_id") val chatId: Int  // Изменено: Long → Int, snake_case
-    ) : ClientMessage()
-
-    @Serializable
-    @SerialName("send_message")
-    data class SendMessage(
-        @SerialName("chat_id") val chatId: Int,  // Изменено: Long → Int, snake_case
-        @SerialName("content") val content: String,
-        @SerialName("type") val type: String = "text",
-        @SerialName("reply_to") val replyTo: Int? = null,  // Добавлено
-        @SerialName("metadata") val metadata: String? = null  // Добавлено
-    ) : ClientMessage()
-
-    @Serializable
-    @SerialName("mark_read")
-    data class MarkRead(
-        @SerialName("chat_id") val chatId: Int,  // Изменено: Long → Int, snake_case
-        @SerialName("message_ids") val messageIds: List<Int>  // Изменено: Long → Int, snake_case
-    ) : ClientMessage()
-
-    @Serializable
-    @SerialName("typing")
-    data class Typing(
-        @SerialName("chat_id") val chatId: Int,  // Изменено: Long → Int, snake_case
-        @SerialName("is_typing") val isTyping: Boolean = true  // Добавлено
-    ) : ClientMessage()
+sealed class WebSocketIncomingMessage {
+    abstract val type: String
 }
 
-// Сообщения от сервера к клиенту
 @Serializable
-sealed class ServerMessage {
-    @Serializable
-    @SerialName("new_message")
-    data class NewMessage(
-        @SerialName("message") val message: MessageDto
-    ) : ServerMessage()
+data class PingMessage(
+    @SerialName("type")
+    override val type: String = "ping"
+) : WebSocketIncomingMessage()
 
-    @Serializable
-    @SerialName("message_updated")
-    data class MessageUpdated(
-        @SerialName("message") val message: MessageDto,
-        @SerialName("update_type") val updateType: String  // "content", "status", "read_by", "deleted"
-    ) : ServerMessage()  // Добавлено
+@Serializable
+data class SendMessageRequest(
+    @SerialName("type")
+    override val type: String = "send_message",
 
-    @Serializable
-    @SerialName("message_status")
-    data class MessageStatus(
-        @SerialName("message_id") val messageId: Int,  // Изменено: Long → Int, snake_case
-        @SerialName("status") val status: String,      // "sending", "sent", "delivered", "read"
-        @SerialName("updated_at") val updatedAt: String  // snake_case
-    ) : ServerMessage()
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int,
 
-    @Serializable
-    @SerialName("user_status")
-    data class UserStatus(
-        @SerialName("user_id") val userId: Int,  // Изменено: Long → Int, snake_case
-        @SerialName("is_online") val isOnline: Boolean,  // snake_case
-        @SerialName("last_seen") val lastSeen: String?,  // snake_case
-        @SerialName("status") val status: String? = null  // "online", "offline", "busy", "away"
-    ) : ServerMessage()
+    @SerialName("content")
+    val content: String,
 
-    @Serializable
-    @SerialName("new_chat")
-    data class NewChat(
-        @SerialName("chat") val chat: ChatDto
-    ) : ServerMessage()
+    @SerialName("replyTo")  // ✅ camelCase
+    val replyTo: Int? = null,
 
-    @Serializable
-    @SerialName("chat_updated")
-    data class ChatUpdated(
-        @SerialName("chat") val chat: ChatDto,
-        @SerialName("update_type") val updateType: String  // "name", "avatar", "members", "last_message"
-    ) : ServerMessage()  // Добавлено
+    @SerialName("messageType")  // ✅ camelCase
+    val messageType: String = "text"
+) : WebSocketIncomingMessage()
 
-    @Serializable
-    @SerialName("user_typing")
-    data class UserTyping(
-        @SerialName("chat_id") val chatId: Int,  // Изменено: Long → Int, snake_case
-        @SerialName("user_id") val userId: Int,  // Изменено: Long → Int, snake_case
-        @SerialName("is_typing") val isTyping: Boolean  // Добавлено
-    ) : ServerMessage()
+@Serializable
+data class TypingMessage(
+    @SerialName("type")
+    override val type: String = "typing",
 
-    @Serializable
-    @SerialName("notification")
-    data class Notification(
-        @SerialName("title") val title: String,
-        @SerialName("body") val body: String,
-        @SerialName("chat_id") val chatId: Int,  // Изменено: Long → Int, snake_case
-        @SerialName("message_id") val messageId: Int? = null  // Изменено: Long → Int, snake_case
-    ) : ServerMessage()
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int,
 
-    @Serializable
-    @SerialName("error")
-    data class Error(
-        @SerialName("code") val code: String,
-        @SerialName("message") val message: String,
-        @SerialName("details") val details: Map<String, String> = emptyMap()
-    ) : ServerMessage()
+    @SerialName("isTyping")  // ✅ camelCase
+    val isTyping: Boolean
+) : WebSocketIncomingMessage()
 
-    @Serializable
-    @SerialName("pong")
-    data class Pong(
-        @SerialName("timestamp") val timestamp: String
-    ) : ServerMessage()
+@Serializable
+data class ReadReceiptMessage(
+    @SerialName("type")
+    override val type: String = "read_receipt",
 
-    @Serializable
-    @SerialName("auth_required")
-    object AuthRequired : ServerMessage()  // Добавлено
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int,
 
-    @Serializable
-    @SerialName("auth_success")
-    data class AuthSuccess(
-        @SerialName("user_id") val userId: Int  // Изменено: Long → Int, snake_case
-    ) : ServerMessage()  // Добавлено
+    @SerialName("messageIds")  // ✅ camelCase
+    val messageIds: List<Int>
+) : WebSocketIncomingMessage()
+
+@Serializable
+data class SubscribeChatMessage(
+    @SerialName("type")
+    override val type: String = "subscribe_chat",
+
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int
+) : WebSocketIncomingMessage()
+
+@Serializable
+data class UnsubscribeChatMessage(
+    @SerialName("type")
+    override val type: String = "unsubscribe_chat",
+
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int
+) : WebSocketIncomingMessage()
+
+// ============== ИСХОДЯЩИЕ СООБЩЕНИЯ (сервер → клиент) ==============
+
+@Serializable
+sealed class WebSocketOutgoingMessage {
+    abstract val type: String
+    abstract val timestamp: String?
 }
+
+@Serializable
+data class WelcomeMessage(
+    @SerialName("type")
+    override val type: String = "welcome",
+
+    @SerialName("message")
+    val message: String,
+
+    @SerialName("user")
+    val user: WelcomeUser,
+
+    @SerialName("serverInfo")  // ✅ camelCase
+    val serverInfo: ServerInfo,
+
+    @SerialName("chats")
+    val chats: List<WelcomeChat>,
+
+    @SerialName("timestamp")
+    override val timestamp: String? = null
+) : WebSocketOutgoingMessage()
+
+@Serializable
+data class WelcomeUser(
+    @SerialName("id")
+    val id: Int,
+
+    @SerialName("email")
+    val email: String,
+
+    @SerialName("username")
+    val username: String,
+
+    @SerialName("displayName")  // ✅ camelCase
+    val displayName: String? = null
+)
+
+@Serializable
+data class ServerInfo(
+    @SerialName("version")
+    val version: String,
+
+    @SerialName("timestamp")
+    val timestamp: String,
+
+    @SerialName("connectionId")  // ✅ camelCase
+    val connectionId: String
+)
+
+@Serializable
+data class WelcomeChat(
+    @SerialName("id")
+    val id: Int,
+
+    @SerialName("name")
+    val name: String? = null,
+
+    @SerialName("type")
+    val type: String,
+
+    @SerialName("unreadCount")  // ✅ camelCase
+    val unreadCount: Int = 0,
+
+    @SerialName("lastMessageAt")  // ✅ camelCase
+    val lastMessageAt: String? = null
+)
+
+@Serializable
+data class PongMessage(
+    @SerialName("type")
+    override val type: String = "pong",
+
+    @SerialName("timestamp")
+    override val timestamp: String,
+
+    @SerialName("serverTime")  // ✅ camelCase
+    val serverTime: Long
+) : WebSocketOutgoingMessage()
+
+@Serializable
+data class MessageSentConfirmation(
+    @SerialName("type")
+    override val type: String = "message_sent",
+
+    @SerialName("messageId")  // ✅ camelCase
+    val messageId: Int,
+
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int,
+
+    @SerialName("timestamp")
+    override val timestamp: String
+) : WebSocketOutgoingMessage()
+
+@Serializable
+data class NewMessageEvent(
+    @SerialName("type")
+    override val type: String = "new_message",
+
+    @SerialName("message")
+    val message: com.example.elizarchat.data.remote.dto.MessageDto,
+
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int,
+
+    @SerialName("senderId")  // ✅ camelCase
+    val senderId: Int,
+
+    @SerialName("senderEmail")  // ✅ camelCase
+    val senderEmail: String,
+
+    @SerialName("timestamp")
+    override val timestamp: String
+) : WebSocketOutgoingMessage()
+
+@Serializable
+data class UserTypingEvent(
+    @SerialName("type")
+    override val type: String = "user_typing",
+
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int,
+
+    @SerialName("userId")  // ✅ camelCase
+    val userId: Int,
+
+    @SerialName("userEmail")  // ✅ camelCase
+    val userEmail: String,
+
+    @SerialName("isTyping")  // ✅ camelCase
+    val isTyping: Boolean,
+
+    @SerialName("timestamp")
+    override val timestamp: String
+) : WebSocketOutgoingMessage()
+
+@Serializable
+data class ReadReceiptAck(
+    @SerialName("type")
+    override val type: String = "read_receipt_ack",
+
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int,
+
+    @SerialName("messageIds")  // ✅ camelCase
+    val messageIds: List<Int>,
+
+    @SerialName("timestamp")
+    override val timestamp: String
+) : WebSocketOutgoingMessage()
+
+@Serializable
+data class ChatSubscribedConfirmation(
+    @SerialName("type")
+    override val type: String = "chat_subscribed",
+
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int,
+
+    @SerialName("timestamp")
+    override val timestamp: String
+) : WebSocketOutgoingMessage()
+
+@Serializable
+data class ChatUnsubscribedConfirmation(
+    @SerialName("type")
+    override val type: String = "chat_unsubscribed",
+
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int,
+
+    @SerialName("timestamp")
+    override val timestamp: String
+) : WebSocketOutgoingMessage()
+
+@Serializable
+data class ErrorMessage(
+    @SerialName("type")
+    override val type: String = "error",
+
+    @SerialName("code")
+    val code: String,
+
+    @SerialName("message")
+    val message: String,
+
+    @SerialName("timestamp")
+    override val timestamp: String
+) : WebSocketOutgoingMessage()
+
+// ============== ДОПОЛНИТЕЛЬНЫЕ СОБЫТИЯ ИЗ chatHandler.js ==============
+
+@Serializable
+data class MessageUpdatedEvent(
+    @SerialName("type")
+    override val type: String = "message_updated",
+
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int,
+
+    @SerialName("messageId")  // ✅ camelCase
+    val messageId: Int,
+
+    @SerialName("updates")
+    val updates: Map<String, JsonElement> = emptyMap(),  // ИСПРАВЛЕНО: Any → JsonElement
+
+    @SerialName("timestamp")
+    override val timestamp: String
+) : WebSocketOutgoingMessage()
+
+@Serializable
+data class MessageDeletedEvent(
+    @SerialName("type")
+    override val type: String = "message_deleted",
+
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int,
+
+    @SerialName("messageId")  // ✅ camelCase
+    val messageId: Int,
+
+    @SerialName("timestamp")
+    override val timestamp: String
+) : WebSocketOutgoingMessage()
+
+@Serializable
+data class ChatUpdatedEvent(
+    @SerialName("type")
+    override val type: String = "chat_updated",
+
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int,
+
+    @SerialName("updates")
+    val updates: Map<String, JsonElement> = emptyMap(),  // ИСПРАВЛЕНО: Any → JsonElement
+
+    @SerialName("timestamp")
+    override val timestamp: String
+) : WebSocketOutgoingMessage()
+
+@Serializable
+data class MemberAddedEvent(
+    @SerialName("type")
+    override val type: String = "member_added",
+
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int,
+
+    @SerialName("userId")  // ✅ camelCase
+    val userId: Int,
+
+    @SerialName("addedBy")  // ✅ camelCase
+    val addedBy: Int,
+
+    @SerialName("timestamp")
+    override val timestamp: String
+) : WebSocketOutgoingMessage()
+
+@Serializable
+data class MemberRemovedEvent(
+    @SerialName("type")
+    override val type: String = "member_removed",
+
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int,
+
+    @SerialName("userId")  // ✅ camelCase
+    val userId: Int,
+
+    @SerialName("removedBy")  // ✅ camelCase
+    val removedBy: Int,
+
+    @SerialName("timestamp")
+    override val timestamp: String
+) : WebSocketOutgoingMessage()
+
+@Serializable
+data class AddedToChatEvent(
+    @SerialName("type")
+    override val type: String = "added_to_chat",
+
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int,
+
+    @SerialName("addedBy")  // ✅ camelCase
+    val addedBy: Int,
+
+    @SerialName("timestamp")
+    override val timestamp: String
+) : WebSocketOutgoingMessage()
+
+@Serializable
+data class RemovedFromChatEvent(
+    @SerialName("type")
+    override val type: String = "removed_from_chat",
+
+    @SerialName("chatId")  // ✅ camelCase
+    val chatId: Int,
+
+    @SerialName("removedBy")  // ✅ camelCase
+    val removedBy: Int,
+
+    @SerialName("timestamp")
+    override val timestamp: String
+) : WebSocketOutgoingMessage()

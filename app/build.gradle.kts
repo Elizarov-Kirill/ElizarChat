@@ -62,7 +62,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
 
     // Kotlin Serialization (убедитесь что версия актуальная)
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
+    implementation(libs.kotlinx.serialization.json)
 
     // Room с KSP
     implementation(libs.androidx.room.runtime)
@@ -70,10 +70,10 @@ dependencies {
     ksp(libs.androidx.room.compiler)// KSP вместо kapt
 
     // Retrofit с Kotlin Serialization Converter
-    implementation("com.squareup.retrofit2:retrofit:2.12.0")
-    implementation("com.squareup.retrofit2:converter-kotlinx-serialization:2.12.0")
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation(libs.retrofit.v2120)
+    implementation(libs.converter.kotlinx.serialization)
+    implementation(libs.okhttp.v532)
+    implementation(libs.logging.interceptor.v532)
 
     // ViewModel и LiveData
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
@@ -85,13 +85,22 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
 
+    // JwtDecoder
+    implementation(libs.json)
+
+    // Navigation Compose
+    implementation(libs.androidx.navigation.compose)
+
+    // Material Icons
+    implementation(libs.androidx.compose.material.icons.extended)
+
     // Security Crypto для хранения токенов
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation(libs.androidx.security.crypto)
 
     // Datastore (опционально, для хранения настроек)
-    implementation("androidx.datastore:datastore-preferences:1.1.0")
+    implementation(libs.androidx.datastore.preferences)
 
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     // Тестирование
     testImplementation(libs.junit)
@@ -101,4 +110,7 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+    androidTestImplementation(libs.okhttp.v532)
+    androidTestImplementation(libs.kotlinx.coroutines.android.v173)
 }

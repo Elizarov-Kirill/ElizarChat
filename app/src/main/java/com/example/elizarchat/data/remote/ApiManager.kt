@@ -1,26 +1,29 @@
 package com.example.elizarchat.data.remote
 
 import android.content.Context
-import com.example.elizarchat.AppConstants
+import com.example.elizarchat.data.local.session.TokenManager
 import com.example.elizarchat.data.remote.api.*
 import com.example.elizarchat.data.remote.config.RetrofitConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import retrofit2.HttpException
+import retrofit2.Response
+import java.io.IOException
 
 class ApiManager(context: Context) {
-    private val sharedPrefs = context.getSharedPreferences(
-        AppConstants.PREFS_NAME,
-        Context.MODE_PRIVATE
-    )
+    private val tokenManager = TokenManager.getInstance(context)
 
     // Провайдер токена для интерцептора
-    private val tokenProvider: () -> String? = {
-        sharedPrefs.getString(AppConstants.KEY_ACCESS_TOKEN, null)
+    private val tokenProvider: suspend () -> String? = {
+        tokenManager.getAccessToken()
     }
 
     // Retrofit экземпляры
     private val unauthenticatedRetrofit = RetrofitConfig.createUnauthenticatedRetrofit()
-    private val authenticatedRetrofit = RetrofitConfig.createAuthenticatedRetrofit(tokenProvider)
+    private val authenticatedRetrofit = RetrofitConfig.createAuthenticatedRetrofit(
+        { runBlocking { tokenManager.getAccessToken() } }
+    )
 
     // API интерфейсы
     val authApi: AuthApi by lazy {
@@ -43,76 +46,95 @@ class ApiManager(context: Context) {
         authenticatedRetrofit.create(MessageApi::class.java)
     }
 
-    // Управление токенами
-    fun saveTokens(accessToken: String, refreshToken: String) {
-        with(sharedPrefs.edit()) {
-            putString(AppConstants.KEY_ACCESS_TOKEN, accessToken)
-            putString(AppConstants.KEY_REFRESH_TOKEN, refreshToken)
-            // Время истечения токена (15 минут)
-            val expiryTime = System.currentTimeMillis() +
-                    (AppConstants.ACCESS_TOKEN_LIFETIME_MINUTES * 60 * 1000)
-            putLong(AppConstants.KEY_TOKEN_EXPIRY, expiryTime)
-            apply()
+    /**
+     * Safe API call с автоматическим refresh токенов
+     */
+    suspend fun <T> safeApiCall(
+        apiCall: suspend () -> Response<T>,
+        maxRetries: Int = 1
+    ): Result<T> {
+        var retryCount = 0
+
+        while (retryCount <= maxRetries) {
+            try {
+                val response = apiCall()
+
+                when {
+                    response.isSuccessful -> {
+                        val body = response.body()
+                        return if (body != null) {
+                            Result.success(body)
+                        } else {
+                            Result.failure(Exception("Response body is null"))
+                        }
+                    }
+
+                    response.code() == 401 && retryCount < maxRetries -> {
+                        // Пробуем обновить токен при 401 ошибке
+                        if (refreshAccessToken()) {
+                            retryCount++
+                            continue // Повторяем запрос с новым токеном
+                        } else {
+                            // Не удалось обновить - делаем логаут
+                            tokenManager.clearTokens()
+                            return Result.failure(Exception("Authentication failed"))
+                        }
+                    }
+
+                    else -> {
+                        val errorBody = response.errorBody()?.string()
+                        return Result.failure(
+                            Exception("HTTP ${response.code()}: ${errorBody ?: response.message()}")
+                        )
+                    }
+                }
+            } catch (e: IOException) {
+                return Result.failure(Exception("Network error: ${e.message}"))
+            } catch (e: HttpException) {
+                return Result.failure(Exception("HTTP error: ${e.message}"))
+            } catch (e: Exception) {
+                return Result.failure(Exception("Unknown error: ${e.message}"))
+            }
         }
+
+        return Result.failure(Exception("Max retries exceeded"))
     }
 
-    fun clearTokens() {
-        with(sharedPrefs.edit()) {
-            remove(AppConstants.KEY_ACCESS_TOKEN)
-            remove(AppConstants.KEY_REFRESH_TOKEN)
-            remove(AppConstants.KEY_TOKEN_EXPIRY)
-            remove(AppConstants.KEY_USER_ID)
-            remove(AppConstants.KEY_USERNAME)
-            apply()
-        }
-    }
-
-    fun getAccessToken(): String? {
-        return sharedPrefs.getString(AppConstants.KEY_ACCESS_TOKEN, null)
-    }
-
-    fun getRefreshToken(): String? {
-        return sharedPrefs.getString(AppConstants.KEY_REFRESH_TOKEN, null)
-    }
-
-    fun isTokenExpired(): Boolean {
-        val expiryTime = sharedPrefs.getLong(AppConstants.KEY_TOKEN_EXPIRY, 0)
-        return System.currentTimeMillis() > expiryTime
-    }
-
-    fun saveUserInfo(userId: Long, username: String) {
-        with(sharedPrefs.edit()) {
-            putLong(AppConstants.KEY_USER_ID, userId)
-            putString(AppConstants.KEY_USERNAME, username)
-            apply()
-        }
-    }
-
-    fun getUserId(): Long {
-        return sharedPrefs.getLong(AppConstants.KEY_USER_ID, -1)
-    }
-
-    fun getUsername(): String? {
-        return sharedPrefs.getString(AppConstants.KEY_USERNAME, null)
-    }
-
+    /**
+     * Обновление access токена через refresh токен
+     */
     suspend fun refreshAccessToken(): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val refreshToken = getRefreshToken() ?: return@withContext false
-                val request = com.example.elizarchat.data.remote.dto.RefreshTokenRequest(refreshToken)
+                val refreshToken = tokenManager.getRefreshToken() ?: return@withContext false
+
+                // Используем RefreshTokenRequest
+                val request = com.example.elizarchat.data.remote.dto.RefreshTokenRequest(
+                    refreshToken = refreshToken
+                )
+
                 val response = authApi.refreshToken(request)
 
                 if (response.isSuccessful) {
+                    // ВАЖНО: authApi.refreshToken() возвращает AuthResponse напрямую!
                     val authResponse = response.body()
-                    authResponse?.data?.let { tokenResponse ->
-                        saveTokens(tokenResponse.accessToken, tokenResponse.refreshToken)
+
+                    if (authResponse?.success == true) {
+                        // Сохраняем новые токены через TokenManager
+                        tokenManager.saveTokens(
+                            authResponse.tokens.accessToken,
+                            authResponse.tokens.refreshToken,
+                            authResponse.user.id.toString()
+                        )
                         true
-                    } ?: false
+                    } else {
+                        false
+                    }
                 } else {
                     false
                 }
             } catch (e: Exception) {
+                println("❌ DEBUG ApiManager.refreshAccessToken(): Ошибка: ${e.message}")
                 false
             }
         }

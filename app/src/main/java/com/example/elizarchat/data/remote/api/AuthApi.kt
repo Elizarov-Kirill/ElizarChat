@@ -15,7 +15,7 @@ interface AuthApi {
     @POST("auth/register")
     suspend fun register(
         @Body request: RegisterRequest
-    ): Response<ApiResponse<AuthResponse>>  // Изменено: TokenResponse → AuthResponse
+    ): Response<AuthResponse>
 
     /**
      * POST /api/v1/auth/login
@@ -25,7 +25,7 @@ interface AuthApi {
     @POST("auth/login")
     suspend fun login(
         @Body request: LoginRequest
-    ): Response<ApiResponse<AuthResponse>>  // Изменено: TokenResponse → AuthResponse
+    ): Response<AuthResponse>  // Изменено: TokenResponse → AuthResponse
 
     /**
      * GET /api/v1/auth/me
@@ -50,7 +50,7 @@ interface AuthApi {
     @POST("auth/refresh")
     suspend fun refreshToken(
         @Body request: RefreshTokenRequest
-    ): Response<ApiResponse<AuthResponse>>  // Изменено: TokenResponse → AuthResponse
+    ): Response<AuthResponse>  // Изменено: TokenResponse → AuthResponse
 
     /**
      * POST /api/v1/auth/logout

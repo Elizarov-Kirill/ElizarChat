@@ -16,7 +16,7 @@ object UserMapper {
             // СЕРВЕРНЫЕ ПОЛЯ
             id = dto.id,
             username = dto.username,
-            email = dto.email,
+            email = dto.email ?: "",
             displayName = dto.displayName,  // Исправлено: display_name → displayName
             avatarUrl = dto.avatarUrl,      // Исправлено: avatar_url → avatarUrl
             bio = dto.bio,
@@ -73,7 +73,7 @@ object UserMapper {
             // СЕРВЕРНЫЕ ПОЛЯ
             id = dto.id.toString(),
             username = dto.username,
-            email = dto.email,
+            email = dto.email ?: "",
             displayName = dto.displayName,  // Исправлено
             avatarUrl = dto.avatarUrl,      // Исправлено
             bio = dto.bio,

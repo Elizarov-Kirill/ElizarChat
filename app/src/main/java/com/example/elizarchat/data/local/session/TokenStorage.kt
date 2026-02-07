@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
-import java.time.Instant
 import java.util.Date
 
 // Создаем DataStore
@@ -28,9 +27,11 @@ class TokenStorage(private val context: Context) {
         private val REFRESH_TOKEN_EXPIRY_KEY = longPreferencesKey("refresh_token_expiry")
         private val IS_LOGGED_IN_KEY = booleanPreferencesKey("is_logged_in")
 
-        // Время жизни токенов в миллисекундах (из сервера)
-        private const val ACCESS_TOKEN_LIFETIME_MS = 15 * 60 * 1000L // 15 минут
-        private const val REFRESH_TOKEN_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000L // 7 дней
+        // Время жизни refresh токена (30 дней как на сервере)
+        private const val REFRESH_TOKEN_LIFETIME_MS = 30L * 24 * 60 * 60 * 1000L
+
+        // ВРЕМЕННО: фиксированное время для access токена (15 минут)
+        private const val TEMP_ACCESS_TOKEN_LIFETIME_MS = 15 * 60 * 1000L
     }
 
     /**
@@ -41,18 +42,29 @@ class TokenStorage(private val context: Context) {
         refreshToken: String,
         userId: String? = null
     ) {
+        println("💾 DEBUG TokenStorage.saveTokens(): Начало сохранения")
+        println("💾 DEBUG TokenStorage.saveTokens(): accessToken длина: ${accessToken.length}")
+        println("💾 DEBUG TokenStorage.saveTokens(): refreshToken: $refreshToken")
+        println("💾 DEBUG TokenStorage.saveTokens(): userId: $userId")
+
         context.tokenDataStore.edit { preferences ->
             val now = System.currentTimeMillis()
+            val accessExpiry = now + TEMP_ACCESS_TOKEN_LIFETIME_MS
+            val refreshExpiry = now + REFRESH_TOKEN_LIFETIME_MS
 
             preferences[ACCESS_TOKEN_KEY] = accessToken
             preferences[REFRESH_TOKEN_KEY] = refreshToken
-            preferences[ACCESS_TOKEN_EXPIRY_KEY] = now + ACCESS_TOKEN_LIFETIME_MS
-            preferences[REFRESH_TOKEN_EXPIRY_KEY] = now + REFRESH_TOKEN_LIFETIME_MS
+            preferences[ACCESS_TOKEN_EXPIRY_KEY] = accessExpiry
+            preferences[REFRESH_TOKEN_EXPIRY_KEY] = refreshExpiry
             preferences[IS_LOGGED_IN_KEY] = true
 
             userId?.let {
                 preferences[USER_ID_KEY] = it
             }
+
+            println("💾 DEBUG TokenStorage.saveTokens(): Данные сохранены")
+            println("💾 DEBUG TokenStorage.saveTokens(): accessExpiry: $accessExpiry")
+            println("💾 DEBUG TokenStorage.saveTokens(): refreshExpiry: $refreshExpiry")
         }
     }
 
@@ -93,7 +105,7 @@ class TokenStorage(private val context: Context) {
     }
 
     /**
-     * Проверяет, истек ли access токен
+     * Проверяет, истек ли access токен (по сохраненному времени)
      */
     suspend fun isAccessTokenExpired(): Boolean {
         return try {
@@ -106,7 +118,7 @@ class TokenStorage(private val context: Context) {
     }
 
     /**
-     * Проверяет, истек ли refresh токен
+     * Проверяет, истек ли refresh токен (по сохраненному времени)
      */
     suspend fun isRefreshTokenExpired(): Boolean {
         return try {
@@ -125,8 +137,11 @@ class TokenStorage(private val context: Context) {
         context.tokenDataStore.edit { preferences ->
             val now = System.currentTimeMillis()
 
+            // ⚠️ ВРЕМЕННО: используем фиксированное время
+            val accessExpiry = now + TEMP_ACCESS_TOKEN_LIFETIME_MS
+
             preferences[ACCESS_TOKEN_KEY] = newAccessToken
-            preferences[ACCESS_TOKEN_EXPIRY_KEY] = now + ACCESS_TOKEN_LIFETIME_MS
+            preferences[ACCESS_TOKEN_EXPIRY_KEY] = accessExpiry
         }
     }
 
@@ -180,8 +195,9 @@ class TokenStorage(private val context: Context) {
             val isLoggedIn = preferences[IS_LOGGED_IN_KEY] ?: false
             val hasAccessToken = preferences[ACCESS_TOKEN_KEY] != null
             val hasRefreshToken = preferences[REFRESH_TOKEN_KEY] != null
+            val refreshNotExpired = !isRefreshTokenExpired()
 
-            isLoggedIn && hasAccessToken && hasRefreshToken
+            isLoggedIn && hasAccessToken && hasRefreshToken && refreshNotExpired
         }
 
     /**

@@ -7,6 +7,7 @@ import androidx.lifecycle.asLiveData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
  * Менеджер для работы с токенами, предоставляющий LiveData для UI слоя
@@ -44,7 +45,6 @@ class TokenManager(private val context: Context) {
 
     suspend fun isLoggedIn(): Boolean = tokenStorage.isLoggedIn()
 
-    fun isLoggedInSync(): Boolean = tokenStorage.isLoggedInSync()
 
     suspend fun clearTokens() {
         tokenStorage.clearTokens()
@@ -61,6 +61,12 @@ class TokenManager(private val context: Context) {
     suspend fun isRefreshTokenExpired(): Boolean = tokenStorage.isRefreshTokenExpired()
 
     suspend fun getTokenInfo(): TokenStorage.TokenInfo = tokenStorage.getTokenInfo()
+
+    // Не-suspend методы для UI
+    fun getAccessTokenSync(): String? = tokenStorage.getAccessTokenSync()
+    fun getRefreshTokenSync(): String? = tokenStorage.getRefreshTokenSync()
+    fun getUserIdSync(): String? = runBlocking { tokenStorage.getUserId() }
+    fun isLoggedInSync(): Boolean = tokenStorage.isLoggedInSync()
 
     // LiveData для UI
     val isLoggedInLiveData = tokenStorage.isLoggedInFlow.asLiveData()

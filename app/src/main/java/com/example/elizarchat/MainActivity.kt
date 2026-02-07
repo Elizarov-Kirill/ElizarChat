@@ -6,9 +6,11 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.tooling.preview.Preview
+import com.example.elizarchat.ui.screens.ElizarNavigation
 import com.example.elizarchat.ui.theme.ElizarChatTheme
 
 class MainActivity : ComponentActivity() {
@@ -21,17 +23,26 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    Greeting("Eliza Chat")
+                    ElizarNavigation()
                 }
             }
         }
     }
 }
 
+@Preview(showBackground = true)
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
+fun AppPreview() {
+    ElizarChatTheme {
+        ElizarNavigation()
+    }
 }
+
+@Composable
+fun getElizarChatApplication(): ElizarChatApplication {
+    val context = LocalContext.current
+    return context.applicationContext as ElizarChatApplication
+}
+
+// test12345@test11.com
+// edcrfv

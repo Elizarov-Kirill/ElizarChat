@@ -5,6 +5,6 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class MarkAsReadRequest(
-    @SerialName("message_id")
+    @SerialName("messageId")
     val messageId: Int
 )

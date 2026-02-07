@@ -8,10 +8,10 @@ data class MessageDto(
     @SerialName("id")
     val id: Int,                    // ← Integer
 
-    @SerialName("chat_id")
+    @SerialName("chatId")  // ✅ ИСПРАВЛЕНО: camelCase
     val chatId: Int,               // ← Integer
 
-    @SerialName("sender_id")       // ← ИЗМЕНЕНО: было user_id, стало sender_id (как на сервере)
+    @SerialName("senderId")  // ✅ ИСПРАВЛЕНО: camelCase
     val senderId: Int,             // ← Integer
 
     @SerialName("content")
@@ -23,22 +23,22 @@ data class MessageDto(
     @SerialName("metadata")
     val metadata: String? = null,  // JSON строка
 
-    @SerialName("reply_to")        // ← ДОБАВЛЕНО (есть на сервере)
+    @SerialName("replyTo")  // ✅ ИСПРАВЛЕНО: camelCase
     val replyTo: Int? = null,      // ← Integer
 
     @SerialName("status")          // ← ДОБАВЛЕНО (есть на сервере)
     val status: String? = null,    // "sending", "sent", "delivered", "read"
 
-    @SerialName("created_at")
+    @SerialName("createdAt")  // ✅ ИСПРАВЛЕНО: camelCase
     val createdAt: String? = null,  // ISO 8601 строка
 
-    @SerialName("updated_at")
+    @SerialName("updatedAt")  // ✅ ИСПРАВЛЕНО: camelCase
     val updatedAt: String? = null,  // ISO 8601 строка
 
-    @SerialName("deleted_at")      // ← ДОБАВЛЕНО (есть на сервере)
+    @SerialName("deletedAt")  // ✅ ИСПРАВЛЕНО: camelCase
     val deletedAt: String? = null,
 
-    @SerialName("read_by")         // ← ДОБАВЛЕНО (есть на сервере)
+    @SerialName("readBy")  // ✅ ИСПРАВЛЕНО: camelCase
     val readBy: List<Int>? = emptyList()  // ← List<Int>
 )
 
@@ -48,10 +48,10 @@ data class MessagesResponse(
     @SerialName("messages")
     val messages: List<MessageDto> = emptyList(),
 
-    @SerialName("has_more")
+    @SerialName("hasMore")  // ✅ ИСПРАВЛЕНО: camelCase
     val hasMore: Boolean = false,
 
-    @SerialName("total_count")
+    @SerialName("totalCount")  // ✅ ИСПРАВЛЕНО: camelCase
     val totalCount: Int = 0
 )
 
@@ -73,7 +73,7 @@ data class SendMessageRequest(
     @SerialName("metadata")
     val metadata: String? = null,
 
-    @SerialName("reply_to")        // ← ДОБАВЛЕНО
+    @SerialName("replyTo")  // ✅ ИСПРАВЛЕНО: camelCase
     val replyTo: Int? = null
 )
 
@@ -85,6 +85,6 @@ data class UpdateMessageRequest(
 
 @Serializable
 data class DeleteMessageRequest(
-    @SerialName("message_id")
+    @SerialName("messageId")  // ✅ ИСПРАВЛЕНО: camelCase
     val messageId: Int
 )

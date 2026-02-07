@@ -6,39 +6,67 @@ import kotlinx.serialization.Serializable
 // ============== ЗАПРОСЫ ==============
 @Serializable
 data class RegisterRequest(
-    @SerialName("username") val username: String,
-    @SerialName("email") val email: String,
-    @SerialName("password") val password: String,
-    @SerialName("display_name") val displayName: String? = null
+    @SerialName("username")
+    val username: String,
+
+    @SerialName("email")
+    val email: String,
+
+    @SerialName("password")
+    val password: String,
+
+    @SerialName("displayName")
+    val displayName: String? = null
 )
 
 @Serializable
 data class LoginRequest(
-    @SerialName("email") val email: String,  // Принимает email ИЛИ username в этом поле
-    @SerialName("password") val password: String
+    @SerialName("email")
+    val email: String,
+
+    @SerialName("password")
+    val password: String
 )
 
 @Serializable
 data class RefreshTokenRequest(
-    @SerialName("refresh_token") val refreshToken: String  // snake_case для сервера
+    @SerialName("refreshToken")
+    val refreshToken: String
 )
 
 @Serializable
 data class LogoutRequest(
-    @SerialName("refresh_token") val refreshToken: String  // snake_case для сервера
+    @SerialName("refreshToken")
+    val refreshToken: String
 )
 
 // ============== ОТВЕТЫ ==============
-@Serializable
-data class TokenResponse(
-    @SerialName("access_token") val accessToken: String,  // snake_case для сервера
-    @SerialName("refresh_token") val refreshToken: String,  // snake_case для сервера
-    @SerialName("expires_in") val expiresIn: Long? = null  // snake_case для сервера
-)
 
+// ДЛЯ АУТЕНТИФИКАЦИИ (login, register, refresh)
 @Serializable
 data class AuthResponse(
-    @SerialName("access_token") val accessToken: String,  // snake_case для сервера
-    @SerialName("refresh_token") val refreshToken: String,  // snake_case для сервера
-    @SerialName("user") val user: UserDto  // Полная информация о пользователе
+    @SerialName("success")
+    val success: Boolean,
+
+    @SerialName("user")
+    val user: UserDto,
+
+    @SerialName("tokens")
+    val tokens: TokensDto,  // Используйте TokensDto, а не TokensResponse!
+
+    @SerialName("error")
+    val error: String? = null
+)
+
+// ДЛЯ ВСЕХ ОСТАЛЬНЫХ API
+
+
+// ЭТО правильная структура для tokens в AuthResponse
+@Serializable
+data class TokensDto(
+    @SerialName("accessToken")
+    val accessToken: String,
+
+    @SerialName("refreshToken")
+    val refreshToken: String
 )

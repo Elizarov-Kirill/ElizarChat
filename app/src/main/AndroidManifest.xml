@@ -8,6 +8,7 @@
 
     <!-- Для Android 9+ (API 28+) разрешаем HTTP трафик (без SSL) -->
     <application
+        android:name=".ElizarChatApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
