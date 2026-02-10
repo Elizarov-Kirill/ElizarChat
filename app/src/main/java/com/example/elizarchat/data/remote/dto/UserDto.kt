@@ -13,12 +13,12 @@ data class UserDto(
     val username: String,
 
     @SerialName("email")
-    val email: String? = null,  // ⚠️ ОБРАТИТЕ ВНИМАНИЕ: В ответе регистрации email отсутствует!
+    val email: String? = null,
 
-    @SerialName("displayName")  // ✅ ИСПРАВЛЕНО: camelCase
+    @SerialName("display_name")  // ← ИСПРАВЛЕНО: snake_case!
     val displayName: String? = null,
 
-    @SerialName("avatarUrl")  // ✅ ИСПРАВЛЕНО: camelCase
+    @SerialName("avatar_url")    // ← ИСПРАВЛЕНО: snake_case!
     val avatarUrl: String? = null,
 
     @SerialName("bio")
@@ -27,29 +27,29 @@ data class UserDto(
     @SerialName("status")
     val status: String? = null,
 
-    @SerialName("isOnline")  // ✅ ИСПРАВЛЕНО: camelCase
+    @SerialName("is_online")
     val isOnline: Boolean = false,
 
-    @SerialName("lastSeen")  // ✅ ИСПРАВЛЕНО: camelCase
+    @SerialName("last_seen")
     val lastSeen: String? = null,
 
-    @SerialName("createdAt")  // ✅ ИСПРАВЛЕНО: camelCase
+    @SerialName("created_at")
     val createdAt: String? = null,
 
-    @SerialName("updatedAt")  // ✅ ИСПРАВЛЕНО: camelCase
+    @SerialName("updated_at")
     val updatedAt: String? = null,
 
     @SerialName("settings")
-    val settings: String? = null  // JSON строка
+    val settings: String? = null
 )
 
 // ============ USER OPERATIONS ============
 @Serializable
 data class UpdateProfileRequest(
-    @SerialName("displayName")  // ✅ ИСПРАВЛЕНО: camelCase
+    @SerialName("display_name")
     val displayName: String? = null,
 
-    @SerialName("avatarUrl")  // ✅ ИСПРАВЛЕНО: camelCase
+    @SerialName("avatar_url")
     val avatarUrl: String? = null,
 
     @SerialName("bio")

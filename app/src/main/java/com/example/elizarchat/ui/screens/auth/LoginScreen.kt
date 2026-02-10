@@ -1,38 +1,24 @@
+// 📁 ui/screens/auth/LoginScreen.kt - ИСПРАВЛЕННЫЙ
 package com.example.elizarchat.ui.screens.auth
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.elizarchat.data.local.session.TokenManager
 import com.example.elizarchat.data.remote.ApiManager
-import com.example.elizarchat.getElizarChatApplication
+import com.example.elizarchat.data.remote.websocket.WebSocketManager
+import com.example.elizarchat.di.ServiceLocator
 import com.example.elizarchat.ui.viewmodels.AuthViewModel
-import kotlinx.coroutines.delay
 
 @Composable
 fun LoginScreen(
@@ -40,36 +26,32 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit
 ) {
     val context = LocalContext.current
-    println("DEBUG: LoginScreen создается")
 
-    val apiManager = remember {
-        println("DEBUG: Создание ApiManager в LoginScreen")
-        ApiManager(context)
-    }
+    // Создаем зависимости через ServiceLocator
+    val tokenManager = remember { ServiceLocator.getTokenManager(context) }
+    val apiManager = remember { ServiceLocator.getApiManager(context) }
+    val webSocketManager = remember { ServiceLocator.getWebSocketManager(context) }
 
-    val tokenManager = remember {
-        println("DEBUG: Получение TokenManager в LoginScreen")
-        TokenManager.getInstance(context)
-    }
-
+    // Создаем локальную фабрику ViewModel
     val viewModel: AuthViewModel = viewModel(
-        factory = AuthViewModel.provideFactory(apiManager, tokenManager)
+        factory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                if (modelClass.isAssignableFrom(AuthViewModel::class.java)) {
+                    return AuthViewModel(apiManager, tokenManager, webSocketManager) as T
+                }
+                throw IllegalArgumentException("Unknown ViewModel class")
+            }
+        }
     )
 
     val state by viewModel.state.collectAsState()
 
-    println("DEBUG: LoginScreen состояние: isLoginSuccessful=${state.isLoginSuccessful}, isLoading=${state.isLoading}")
-
-    // Реакция на успешный логин
+    // Реакция на успешный вход
     LaunchedEffect(state.isLoginSuccessful, state.isLoading) {
-        println("DEBUG: LaunchedEffect сработал, isLoginSuccessful=${state.isLoginSuccessful}, isLoading=${state.isLoading}")
-
         if (state.isLoginSuccessful && !state.isLoading) {
-            println("DEBUG: Условие навигации выполнено! Переход на chats...")
-            // Небольшая задержка для стабильности
-            delay(100)
+            println("✅ LoginScreen: Вход успешен, переход к чатам")
             viewModel.resetSuccessStates()
-            println("DEBUG: Состояние сброшено, вызываем onLoginSuccess")
             onLoginSuccess()
         }
     }
@@ -84,17 +66,18 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "Eliza Chat",
-                style = MaterialTheme.typography.displaySmall,
-                modifier = Modifier.padding(bottom = 48.dp)
+                text = "Вход",
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.padding(bottom = 32.dp)
             )
 
             // Поле email
             OutlinedTextField(
                 value = state.email,
-                onValueChange = viewModel::updateEmail,
+                onValueChange = { viewModel.updateEmail(it) },
                 label = { Text("Email") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -103,14 +86,15 @@ fun LoginScreen(
             // Поле пароля
             OutlinedTextField(
                 value = state.password,
-                onValueChange = viewModel::updatePassword,
+                onValueChange = { viewModel.updatePassword(it) },
                 label = { Text("Пароль") },
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
             // Кнопка входа
             Button(
@@ -123,7 +107,8 @@ fun LoginScreen(
                 if (state.isLoading) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
                     )
                 } else {
                     Text("Войти")
@@ -146,7 +131,7 @@ fun LoginScreen(
             TextButton(
                 onClick = onNavigateToRegister
             ) {
-                Text("Нет аккаунта? Зарегистрируйтесь")
+                Text("Нет аккаунта? Зарегистрироваться")
             }
         }
     }

@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.elizarchat.data.local.session.TokenManager
 import com.example.elizarchat.data.remote.api.*
 import com.example.elizarchat.data.remote.config.RetrofitConfig
+import com.example.elizarchat.data.remote.dto.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -139,4 +140,102 @@ class ApiManager(context: Context) {
             }
         }
     }
+
+    // ============ ЧАТЫ ============
+
+    /**
+     * Получить список чатов
+     * Только page и limit параметры!
+     */
+    suspend fun getChats(
+        page: Int = 1,
+        limit: Int = 20
+    ): Response<ApiResponse<ChatsResponse>> {
+        return chatApi.getChats(page, limit)
+    }
+
+    /**
+     * Получить чат по ID
+     * Возвращает ChatDto, а не ChatDetailResponse
+     */
+    suspend fun getChatById(id: Int): Response<ApiResponse<ChatDto>> {
+        return chatApi.getChatById(id)
+    }
+
+    /**
+     * Создать чат
+     */
+    suspend fun createChat(request: CreateChatRequest): Response<CreateChatResponse> {
+        return chatApi.createChat(request) // Теперь возвращает CreateChatResponse
+    }
+
+    // Удобный метод для создания чата с извлечением данных
+    suspend fun createChatAndGetChat(request: CreateChatRequest): Result<ChatDto> {
+        return try {
+            val response = createChat(request)
+            if (response.isSuccessful) {
+                val apiResponse = response.body()
+                if (apiResponse?.success == true && apiResponse.chat != null) {
+                    Result.success(apiResponse.chat)
+                } else {
+                    Result.failure(Exception(apiResponse?.error ?: "Failed to create chat"))
+                }
+            } else {
+                val errorBody = response.errorBody()?.string()
+                Result.failure(Exception("HTTP ${response.code()}: $errorBody"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // ============ СООБЩЕНИЯ ============
+
+    /**
+     * Получить сообщения чата
+     */
+    suspend fun getMessages(
+        chatId: Int,
+        limit: Int = 50,
+        offset: Int = 0,
+        before: String? = null
+    ): Response<ApiResponse<MessagesResponse>> {
+        return messageApi.getMessages(chatId, limit, offset, before)
+    }
+
+    /**
+     * Отправить сообщение
+     */
+    suspend fun sendMessage(
+        chatId: Int,
+        request: SendMessageRequest
+    ): Response<ApiResponse<MessageDto>> {
+        return messageApi.sendMessage(chatId, request)
+    }
+
+
+    // ============ ПОЛЬЗОВАТЕЛИ ============
+
+    /**
+     * Поиск пользователей
+     */
+    suspend fun searchUsers(
+        query: String,
+        page: Int = 1,
+        limit: Int = 20,
+        excludeContacts: Boolean = false,
+        excludeBlocked: Boolean = true
+    ): Response<UsersResponse> {
+        return userApi.searchUsers(query, page, limit, excludeContacts, excludeBlocked)
+    }
+
+    /**
+     * Получить пользователя по ID
+     */
+    suspend fun getUserById(id: Int): Response<ApiResponse<UserDto>> {
+        return userApi.getUserById(id)
+    }
+
+
+
 }

@@ -16,11 +16,11 @@ object ChatMapper {
             id = dto.id,
             type = dto.type,
             name = dto.name,
-            avatarUrl = dto.avatarUrl,      // Исправлено: avatar_url → avatarUrl
-            createdBy = dto.createdBy,      // Исправлено: created_by → createdBy
-            createdAt = parseInstant(dto.createdAt) ?: Instant.now(),  // Исправлено
-            updatedAt = parseInstant(dto.updatedAt),  // Исправлено
-            lastMessageAt = parseInstant(dto.lastMessageAt),  // Исправлено
+            avatarUrl = null, // У сервера нет avatarUrl, используем null или dto.description
+            createdBy = dto.createdBy ?: 0,
+            createdAt = parseInstant(dto.createdAt) ?: Instant.now(),
+            updatedAt = parseInstant(dto.updatedAt),
+            lastMessageAt = parseInstant(dto.lastMessageAt),
 
             // ЛОКАЛЬНЫЕ ПОЛЯ
             isMuted = false,
@@ -59,11 +59,11 @@ object ChatMapper {
             id = dto.id.toString(),
             type = dto.type,
             name = dto.name,
-            avatarUrl = dto.avatarUrl,      // Исправлено
-            createdBy = dto.createdBy.toString(),  // Исправлено
-            createdAt = parseInstant(dto.createdAt) ?: Instant.now(),  // Исправлено
-            updatedAt = parseInstant(dto.updatedAt),  // Исправлено
-            lastMessageAt = parseInstant(dto.lastMessageAt),  // Исправлено
+            avatarUrl = null, // У сервера нет avatarUrl
+            createdBy = dto.createdBy?.toString() ?: "0",
+            createdAt = parseInstant(dto.createdAt) ?: Instant.now(),
+            updatedAt = parseInstant(dto.updatedAt),
+            lastMessageAt = parseInstant(dto.lastMessageAt),
 
             // ЛОКАЛЬНЫЕ ПОЛЯ (по умолчанию)
             isMuted = false,

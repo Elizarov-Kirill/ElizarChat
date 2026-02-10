@@ -5,14 +5,19 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.elizarchat.data.local.session.TokenManager
 import com.example.elizarchat.data.remote.ApiManager
+import com.example.elizarchat.data.remote.dto.ChatDto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 data class ChatsState(
     val isLoading: Boolean = false,
     val error: String? = null,
-    val isLoggedIn: Boolean = false
+    val chats: List<ChatDto> = emptyList(),
+    val isRefreshing: Boolean = false,
+    val hasMoreChats: Boolean = true,
+    val currentPage: Int = 1
 )
 
 class ChatsViewModel(
@@ -21,41 +26,93 @@ class ChatsViewModel(
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatsState())
-    val state: StateFlow<ChatsState> = _state
+    val state: StateFlow<ChatsState> = _state.asStateFlow()
 
     init {
-        println("🚀 DEBUG ChatsViewModel: Инициализация")
-        checkAuth()
+        loadChats()
     }
 
-    fun checkAuth() {
+    fun loadChats(refresh: Boolean = false) {
         viewModelScope.launch {
-            println("🔐 DEBUG ChatsViewModel.checkAuth(): Проверка авторизации")
-            _state.value = _state.value.copy(isLoading = true)
-
             try {
-                val isLoggedIn = tokenManager.isLoggedIn()
-                println("🔐 DEBUG ChatsViewModel.checkAuth(): isLoggedIn = $isLoggedIn")
+                if (refresh) {
+                    _state.value = _state.value.copy(
+                        isRefreshing = true,
+                        currentPage = 1,
+                        hasMoreChats = true,
+                        chats = emptyList()
+                    )
+                } else {
+                    _state.value = _state.value.copy(isLoading = true)
+                }
 
-                _state.value = _state.value.copy(
-                    isLoading = false,
-                    isLoggedIn = isLoggedIn
+                val response = apiManager.getChats(
+                    page = _state.value.currentPage,
+                    limit = 20
                 )
+
+                if (response.isSuccessful) {
+                    val apiResponse = response.body()
+                    if (apiResponse?.success == true) {
+                        val chatsResponse = apiResponse.data
+                        if (chatsResponse != null) {
+                            val currentChats = _state.value.chats
+                            val newChats = if (refresh) {
+                                chatsResponse.chats
+                            } else {
+                                currentChats + chatsResponse.chats
+                            }
+
+                            _state.value = _state.value.copy(
+                                chats = newChats,
+                                hasMoreChats = chatsResponse.chats.size >= 20,
+                                currentPage = if (refresh) 2 else _state.value.currentPage + 1,
+                                isLoading = false,
+                                isRefreshing = false,
+                                error = null
+                            )
+                        }
+                    } else {
+                        _state.value = _state.value.copy(
+                            isLoading = false,
+                            isRefreshing = false,
+                            error = apiResponse?.error ?: "Failed to load chats"
+                        )
+                    }
+                } else {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        error = "HTTP ${response.code()}"
+                    )
+                }
             } catch (e: Exception) {
-                println("❌ DEBUG ChatsViewModel.checkAuth(): Ошибка: ${e.message}")
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    error = "Auth check failed: ${e.message}"
+                    isRefreshing = false,
+                    error = "Network error: ${e.message}"
                 )
             }
         }
     }
 
+    fun refreshChats() {
+        loadChats(refresh = true)
+    }
+
+    fun loadMoreChats() {
+        if (!_state.value.isLoading && _state.value.hasMoreChats) {
+            loadChats()
+        }
+    }
+
+    fun clearError() {
+        _state.value = _state.value.copy(error = null)
+    }
+
     fun logout() {
         viewModelScope.launch {
-            println("🚪 DEBUG ChatsViewModel.logout(): Выход")
             tokenManager.clearTokens()
-            _state.value = _state.value.copy(isLoggedIn = false)
         }
     }
 

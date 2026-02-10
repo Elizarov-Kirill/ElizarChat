@@ -123,6 +123,11 @@ object RetrofitConfig {
                 val response = chain.proceed(chain.request())
                 if (!response.isSuccessful) {
                     println("HTTP ошибка: ${response.code} - ${response.message}")
+                } else {
+                    // Логируем успешный ответ для отладки
+                    val responseBody = response.peekBody(1024 * 1024) // 1MB
+                    val responseString = responseBody.string()
+                    println("✅ HTTP ответ (первые 1KB): ${responseString.take(1024)}")
                 }
                 return response
             } catch (e: Exception) {

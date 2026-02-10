@@ -13,30 +13,36 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class ChatDto(
     @SerialName("id")
-    val id: Int,  // INTEGER PRIMARY KEY
+    val id: Int,
 
     @SerialName("type")
-    val type: String,  // "private", "group", "channel"
+    val type: String, // "private", "group", "channel"
 
     @SerialName("name")
-    val name: String? = null,  // VARCHAR(255)
+    val name: String? = null,
 
-    @SerialName("avatarUrl")  // ✅ ИСПРАВЛЕНО: camelCase
-    val avatarUrl: String? = null,  // TEXT (добавлено!)
+    @SerialName("description") // ✅ Сервер использует description, а не avatarUrl
+    val description: String? = null,
 
-    @SerialName("createdBy")  // ✅ ИСПРАВЛЕНО: camelCase
-    val createdBy: Int,  // INTEGER REFERENCES users(id)
+    @SerialName("createdBy")
+    val createdBy: Int,
 
-    @SerialName("createdAt")  // ✅ ИСПРАВЛЕНО: camelCase
-    val createdAt: String? = null,  // ISO 8601 строка (TIMESTAMP)
+    @SerialName("createdAt")
+    val createdAt: String? = null,
 
-    @SerialName("updatedAt")  // ✅ ИСПРАВЛЕНО: camelCase
-    val updatedAt: String? = null,  // ISO 8601 строка (TIMESTAMP)
+    @SerialName("updatedAt")
+    val updatedAt: String? = null,
 
-    @SerialName("lastMessageAt")  // ✅ ИСПРАВЛЕНО: camelCase
-    val lastMessageAt: String? = null,  // ISO 8601 строка (TIMESTAMP) - изменено!
+    @SerialName("lastMessageAt")
+    val lastMessageAt: String? = null,
 
-    // Опционально: участники чата
+    @SerialName("lastMessage")
+    val lastMessage: MessageDto? = null,
+
+    @SerialName("unreadCount")
+    val unreadCount: Int = 0,
+
+    // ✅ Сервер использует эту структуру в welcome сообщении WebSocket
     @SerialName("members")
     val members: List<ChatMemberDto>? = null
 )
@@ -78,17 +84,17 @@ data class ChatMemberDto(
  */
 @Serializable
 data class CreateChatRequest(
-    @SerialName("type")
-    val type: String,  // "private", "group", "channel"
+    @SerialName("type") // ✅ server использует "type"
+    val type: String = "private",  // "private", "group", "channel"
 
-    @SerialName("name")
-    val name: String? = null,
+    @SerialName("name") // ✅ server использует "name"
+    val name: String? = "",
 
-    @SerialName("avatarUrl")  // ✅ ИСПРАВЛЕНО: camelCase
-    val avatarUrl: String? = null,  // Добавлено!
+    @SerialName("description") // ✅ server использует "description" (а не avatarUrl!)
+    val description: String? = null,
 
-    @SerialName("memberIds")  // ✅ ИСПРАВЛЕНО: camelCase
-    val memberIds: List<Int>  // ID пользователей для добавления
+    @SerialName("userIds") // ✅ server использует "userIds" (snake_case, но в JSON это camelCase)
+    val userIds: List<Int> = emptyList()  // Изменено: memberIds → userIds
 )
 
 /**

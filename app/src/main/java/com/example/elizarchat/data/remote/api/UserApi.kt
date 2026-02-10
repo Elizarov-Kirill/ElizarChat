@@ -106,7 +106,7 @@ interface UserApi {
         @Query("limit") limit: Int = 20,
         @Query("exclude_contacts") excludeContacts: Boolean = false,
         @Query("exclude_blocked") excludeBlocked: Boolean = true
-    ): Response<ApiResponse<UsersResponse>>
+    ): Response<UsersResponse>
 
     // === ОНЛАЙН СТАТУСЫ ===
 

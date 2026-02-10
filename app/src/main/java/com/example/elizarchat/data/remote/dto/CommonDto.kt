@@ -19,6 +19,15 @@ data class ApiResponse<T>(
     @SerialName("data")
     val data: T? = null,
 
+    @SerialName("chat") // ДОБАВЛЯЕМ: для создания чатов
+    val chat: T? = null,
+
+    @SerialName("user") // Уже есть для аутентификации
+    val user: T? = null,
+
+    @SerialName("users") // Уже есть для списка пользователей
+    val users: T? = null,
+
     @SerialName("error")
     val error: String? = null
 )
@@ -29,7 +38,25 @@ data class ApiResponse<T>(
 @Serializable
 data class UsersResponse(
     @SerialName("users")
-    val users: List<UserDto> = emptyList()
+    val users: List<UserDto> = emptyList(),
+
+    @SerialName("pagination")
+    val pagination: Pagination? = null
+)
+
+@Serializable
+data class Pagination(
+    @SerialName("query")
+    val query: String? = null,
+
+    @SerialName("limit")
+    val limit: Int = 20,
+
+    @SerialName("offset")
+    val offset: Int = 0,
+
+    @SerialName("hasMore")
+    val hasMore: Boolean = false
 )
 
 @Serializable
