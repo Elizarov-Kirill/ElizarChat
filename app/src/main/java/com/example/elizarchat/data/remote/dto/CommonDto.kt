@@ -4,36 +4,67 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Базовый ответ API (формат: {success, message, data, error})
- * Используется для API ответов КРОМЕ аутентификации!
- * ⚠️ Аутентификация использует другой формат: {success, user, tokens}
+ * Базовый ответ API
+ * Сервер всегда возвращает: {success, ...данные, error}
  */
 @Serializable
 data class ApiResponse<T>(
     @SerialName("success")
     val success: Boolean,
 
+    @SerialName("error")
+    val error: String? = null,
+
+    // Разные типы ответов от сервера
     @SerialName("message")
     val message: String? = null,
 
+    // Для списка чатов
+    @SerialName("chats")
+    val chats: List<ChatDto>? = null,
+
+    // Для одного чата
+    @SerialName("chat")
+    val chat: ChatDto? = null,
+
+    // Для сообщений
+    @SerialName("messages")
+    val messages: List<MessageDto>? = null,
+
+    // Для пользователей (поиск)
+    @SerialName("users")
+    val users: List<UserDto>? = null,
+
+    // Для аутентификации
+    @SerialName("user")
+    val user: UserDto? = null,
+
+    @SerialName("tokens")
+    val tokens: TokensDto? = null,
+
+    // Универсальное поле для других данных
     @SerialName("data")
     val data: T? = null,
 
-    @SerialName("chat") // ДОБАВЛЯЕМ: для создания чатов
-    val chat: T? = null,
-
-    @SerialName("user") // Уже есть для аутентификации
-    val user: T? = null,
-
-    @SerialName("users") // Уже есть для списка пользователей
-    val users: T? = null,
-
-    @SerialName("error")
-    val error: String? = null
+    // Пагинация
+    @SerialName("pagination")
+    val pagination: PaginationDto? = null
 )
 
 /**
- * Ответ со списком пользователей
+ * DTO для токенов
+ */
+@Serializable
+data class TokensDto(
+    @SerialName("accessToken")
+    val accessToken: String,
+
+    @SerialName("refreshToken")
+    val refreshToken: String
+)
+
+/**
+ * Ответ со списком пользователей (для поиска)
  */
 @Serializable
 data class UsersResponse(
@@ -41,11 +72,29 @@ data class UsersResponse(
     val users: List<UserDto> = emptyList(),
 
     @SerialName("pagination")
-    val pagination: Pagination? = null
+    val pagination: PaginationDto? = null
 )
 
 @Serializable
-data class Pagination(
+data class MessagesResponse(
+    @SerialName("messages")
+    val messages: List<MessageDto> = emptyList(),
+
+    @SerialName("pagination")
+    val pagination: PaginationDto? = null,
+
+    @SerialName("hasMore")
+    val hasMore: Boolean = false,
+
+    @SerialName("total")
+    val total: Int = 0
+)
+
+/**
+ * Пагинация
+ */
+@Serializable
+data class PaginationDto(
     @SerialName("query")
     val query: String? = null,
 
@@ -56,9 +105,15 @@ data class Pagination(
     val offset: Int = 0,
 
     @SerialName("hasMore")
-    val hasMore: Boolean = false
+    val hasMore: Boolean = false,
+
+    @SerialName("total")
+    val total: Int? = null
 )
 
+/**
+ * Ответ с онлайн пользователями
+ */
 @Serializable
 data class OnlineUsersResponse(
     @SerialName("online")
@@ -81,7 +136,7 @@ data class PaginationRequest(
 )
 
 /**
- * Ответ с пагинацией
+ * Ответ с пагинацией (универсальный)
  */
 @Serializable
 data class PaginatedResponse<T>(
@@ -99,4 +154,51 @@ data class PaginatedResponse<T>(
 
     @SerialName("pages")
     val pages: Int
+)
+
+// Добавьте в конец CommonDto.kt:
+
+/**
+ * Статус пользователя
+ */
+@Serializable
+data class UserStatusDto(
+    @SerialName("userId")
+    val userId: Int,
+
+    @SerialName("isOnline")
+    val isOnline: Boolean,
+
+    @SerialName("lastSeen")
+    val lastSeen: String? = null,
+
+    @SerialName("status")
+    val status: String? = null
+)
+
+/**
+ * Запрос на обновление профиля
+ */
+@Serializable
+data class UpdateProfileRequest(
+    @SerialName("displayName")
+    val displayName: String? = null,
+
+    @SerialName("avatarUrl")
+    val avatarUrl: String? = null,
+
+    @SerialName("bio")
+    val bio: String? = null
+)
+
+/**
+ * Запрос на смену пароля
+ */
+@Serializable
+data class ChangePasswordRequest(
+    @SerialName("currentPassword")
+    val currentPassword: String,
+
+    @SerialName("newPassword")
+    val newPassword: String
 )

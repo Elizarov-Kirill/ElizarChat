@@ -110,14 +110,13 @@ class ApiManager(context: Context) {
                 val refreshToken = tokenManager.getRefreshToken() ?: return@withContext false
 
                 // Используем RefreshTokenRequest
-                val request = com.example.elizarchat.data.remote.dto.RefreshTokenRequest(
+                val request = RefreshTokenRequest(
                     refreshToken = refreshToken
                 )
 
                 val response = authApi.refreshToken(request)
 
                 if (response.isSuccessful) {
-                    // ВАЖНО: authApi.refreshToken() возвращает AuthResponse напрямую!
                     val authResponse = response.body()
 
                     if (authResponse?.success == true) {
@@ -145,7 +144,6 @@ class ApiManager(context: Context) {
 
     /**
      * Получить список чатов
-     * Только page и limit параметры!
      */
     suspend fun getChats(
         page: Int = 1,
@@ -156,7 +154,6 @@ class ApiManager(context: Context) {
 
     /**
      * Получить чат по ID
-     * Возвращает ChatDto, а не ChatDetailResponse
      */
     suspend fun getChatById(id: Int): Response<ApiResponse<ChatDto>> {
         return chatApi.getChatById(id)
@@ -166,7 +163,7 @@ class ApiManager(context: Context) {
      * Создать чат
      */
     suspend fun createChat(request: CreateChatRequest): Response<CreateChatResponse> {
-        return chatApi.createChat(request) // Теперь возвращает CreateChatResponse
+        return chatApi.createChat(request)
     }
 
     // Удобный метод для создания чата с извлечением данных
@@ -204,15 +201,33 @@ class ApiManager(context: Context) {
     }
 
     /**
-     * Отправить сообщение
+     * ИСПРАВЛЕНО: Отправить сообщение через REST API
+     * Принимает SendMessageRequest, а не String
      */
     suspend fun sendMessage(
         chatId: Int,
-        request: SendMessageRequest
+        request: com.example.elizarchat.data.remote.dto.SendMessageRequest
     ): Response<ApiResponse<MessageDto>> {
         return messageApi.sendMessage(chatId, request)
     }
 
+    /**
+     * Удобный метод для отправки текстового сообщения
+     */
+    suspend fun sendTextMessage(
+        chatId: Int,
+        content: String,
+        replyTo: Int? = null
+    ): Response<ApiResponse<MessageDto>> {
+        // ИСПРАВЛЕНО: Используем правильный конструктор
+        val request = SendMessageRequest(
+            content = content,
+            type = "text",  // Используем "type", а не "messageType"
+            replyTo = replyTo,
+            metadata = "{}"
+        )
+        return sendMessage(chatId, request)
+    }
 
     // ============ ПОЛЬЗОВАТЕЛИ ============
 
@@ -236,6 +251,31 @@ class ApiManager(context: Context) {
         return userApi.getUserById(id)
     }
 
+    /**
+     * Получить онлайн пользователей
+     */
+    suspend fun getOnlineUsers(): Response<OnlineUsersResponse> {
+        return userApi.getOnlineUsers()
+    }
 
+    /**
+     * Получить статус пользователя
+     */
+    suspend fun getUserStatus(userId: Int): Response<ApiResponse<UserStatusDto>> {
+        return userApi.getUserStatus(userId)
+    }
 
+    /**
+     * Обновить профиль пользователя
+     */
+    suspend fun updateProfile(request: UpdateProfileRequest): Response<ApiResponse<UserDto>> {
+        return userApi.updateProfile(request)
+    }
+
+    /**
+     * Сменить пароль
+     */
+    suspend fun changePassword(request: ChangePasswordRequest): Response<ApiResponse<Unit>> {
+        return userApi.changePassword(request)
+    }
 }

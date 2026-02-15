@@ -6,26 +6,27 @@ import kotlinx.serialization.Serializable
 // ============ CHAT DTOs ============
 
 /**
- * DTO чата - точное соответствие серверному API
- * Согласно таблице: chats(id, type, name, avatar_url, created_by,
- * created_at, updated_at, last_message_at)
+ * DTO чата - соответствует ответу сервера
+ * Сервер может возвращать разные наборы полей в разных контекстах
  */
 @Serializable
 data class ChatDto(
+    // Обязательные поля (всегда есть)
     @SerialName("id")
     val id: Int,
 
     @SerialName("type")
-    val type: String, // "private", "group", "channel"
+    val type: String,
 
+    // Опциональные поля (могут отсутствовать)
     @SerialName("name")
     val name: String? = null,
 
-    @SerialName("description") // ✅ Сервер использует description, а не avatarUrl
+    @SerialName("description")
     val description: String? = null,
 
     @SerialName("createdBy")
-    val createdBy: Int,
+    val createdBy: Int? = null,  // ← СДЕЛАНО NULLABLE!
 
     @SerialName("createdAt")
     val createdAt: String? = null,
@@ -40,96 +41,92 @@ data class ChatDto(
     val lastMessage: MessageDto? = null,
 
     @SerialName("unreadCount")
-    val unreadCount: Int = 0,
+    val unreadCount: Int = 0,  // Значение по умолчанию
 
-    // ✅ Сервер использует эту структуру в welcome сообщении WebSocket
     @SerialName("members")
-    val members: List<ChatMemberDto>? = null
+    val members: List<ChatMemberDto>? = null,
+
+    @SerialName("avatarUrl")  // Добавляем если нужно
+    val avatarUrl: String? = null
 )
 
 /**
  * DTO участника чата
- * Согласно таблице: chat_members(id, chat_id, user_id, role,
- * joined_at, unread_count, last_read_message_id)
  */
 @Serializable
 data class ChatMemberDto(
     @SerialName("id")
-    val id: Int,  // SERIAL PRIMARY KEY (изменено: Long → Int!)
+    val id: Int? = null,  // Может отсутствовать
 
-    @SerialName("chatId")  // ✅ ИСПРАВЛЕНО: camelCase
-    val chatId: Int,  // INTEGER REFERENCES chats(id)
+    @SerialName("chatId")
+    val chatId: Int? = null,
 
-    @SerialName("userId")  // ✅ ИСПРАВЛЕНО: camelCase
-    val userId: Int,  // INTEGER REFERENCES users(id)
+    @SerialName("userId")
+    val userId: Int,
 
     @SerialName("role")
-    val role: String,  // "owner", "admin", "member", "guest"
+    val role: String = "member",  // Значение по умолчанию
 
-    @SerialName("joinedAt")  // ✅ ИСПРАВЛЕНО: camelCase
-    val joinedAt: String? = null,  // ISO 8601 строка (TIMESTAMP)
+    @SerialName("joinedAt")
+    val joinedAt: String? = null,
 
-    @SerialName("unreadCount")  // ✅ ИСПРАВЛЕНО: camelCase
-    val unreadCount: Int = 0,  // INTEGER DEFAULT 0 (добавлено!)
+    @SerialName("unreadCount")
+    val unreadCount: Int = 0,
 
-    @SerialName("lastReadMessageId")  // ✅ ИСПРАВЛЕНО: camelCase
-    val lastReadMessageId: Int? = null  // INTEGER REFERENCES messages(id)
+    @SerialName("lastReadMessageId")
+    val lastReadMessageId: Int? = null
 )
 
 // ============ CHAT REQUESTS ============
 
 /**
  * Создание чата
- * POST /api/v1/chats
  */
 @Serializable
 data class CreateChatRequest(
-    @SerialName("type") // ✅ server использует "type"
-    val type: String = "private",  // "private", "group", "channel"
+    @SerialName("type")
+    val type: String = "private",
 
-    @SerialName("name") // ✅ server использует "name"
+    @SerialName("name")
     val name: String? = "",
 
-    @SerialName("description") // ✅ server использует "description" (а не avatarUrl!)
+    @SerialName("description")
     val description: String? = null,
 
-    @SerialName("userIds") // ✅ server использует "userIds" (snake_case, но в JSON это camelCase)
-    val userIds: List<Int> = emptyList()  // Изменено: memberIds → userIds
+    @SerialName("userIds")
+    val userIds: List<Int> = emptyList()
 )
 
 /**
  * Обновление чата
- * PUT /api/v1/chats/:id
  */
 @Serializable
 data class UpdateChatRequest(
     @SerialName("name")
     val name: String? = null,
 
-    @SerialName("avatarUrl")  // ✅ ИСПРАВЛЕНО: camelCase
-    val avatarUrl: String? = null  // Добавлено!
+    @SerialName("avatarUrl")
+    val avatarUrl: String? = null
 )
 
 /**
  * Добавление участника
- * POST /api/v1/chats/:id/members
  */
 @Serializable
 data class AddMemberRequest(
-    @SerialName("userId")  // ✅ ИСПРАВЛЕНО: camelCase
+    @SerialName("userId")
     val userId: Int,
 
     @SerialName("role")
-    val role: String = "member"  // "owner", "admin", "member", "guest"
+    val role: String = "member"
 )
 
 /**
  * Удаление участника
- * DELETE /api/v1/chats/:id/members
  */
 @Serializable
 data class RemoveMemberRequest(
-    @SerialName("userId")  // ✅ ИСПРАВЛЕНО: camelCase
+    @SerialName("userId")
     val userId: Int
 )
 
@@ -138,7 +135,7 @@ data class RemoveMemberRequest(
  */
 @Serializable
 data class UpdateUnreadCountRequest(
-    @SerialName("unreadCount")  // ✅ ИСПРАВЛЕНО: camelCase
+    @SerialName("unreadCount")
     val unreadCount: Int
 )
 
@@ -176,6 +173,6 @@ data class ChatDetailResponse(
     @SerialName("messages")
     val messages: List<MessageDto> = emptyList(),
 
-    @SerialName("hasMoreMessages")  // ✅ ИСПРАВЛЕНО: camelCase
+    @SerialName("hasMoreMessages")
     val hasMoreMessages: Boolean = false
 )

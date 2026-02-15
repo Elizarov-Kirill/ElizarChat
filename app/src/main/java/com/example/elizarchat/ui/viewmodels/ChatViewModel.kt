@@ -5,431 +5,447 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.elizarchat.data.local.session.TokenManager
 import com.example.elizarchat.data.remote.ApiManager
-import com.example.elizarchat.data.remote.dto.ChatDto
 import com.example.elizarchat.data.remote.dto.MessageDto
-import com.example.elizarchat.data.remote.dto.SendMessageRequest
+import com.example.elizarchat.data.remote.dto.SenderDto
 import com.example.elizarchat.data.remote.websocket.WebSocketManager
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
+import com.example.elizarchat.data.remote.websocket.WebSocketState
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import java.time.Instant
 
 data class ChatState(
     val isLoading: Boolean = false,
+    val isLoadingMore: Boolean = false,
     val error: String? = null,
-    val chat: ChatDto? = null,
     val messages: List<MessageDto> = emptyList(),
-    val isRefreshing: Boolean = false,
     val hasMoreMessages: Boolean = true,
-    val currentOffset: Int = 0,
-    val isSending: Boolean = false,
-    val newMessageText: String = "",
-    val isLoaded: Boolean = false,
-    val currentUserId: Int? = null,
-    val isConnectedToWebSocket: Boolean = false,
-    val typingUsers: Set<Int> = emptySet()
+    val currentPage: Int = 1,
+    val chatInfo: ChatInfo? = null,
+    val typingUsers: Set<Int> = emptySet(),
+    val connectionStatus: WebSocketState = WebSocketState.Disconnected  // ИСПРАВЛЕНО: WebSocketState вместо ConnectionState
+)
+
+data class ChatInfo(
+    val id: Int,
+    val name: String,
+    val type: String,
+    val members: List<ChatMember> = emptyList()
+)
+
+data class ChatMember(
+    val userId: Int,
+    val username: String? = null,
+    val displayName: String? = null,
+    val role: String = "member"
 )
 
 class ChatViewModel(
     private val apiManager: ApiManager,
+    private val webSocketManager: WebSocketManager,
     private val tokenManager: TokenManager,
-    private val webSocketManager: WebSocketManager
+    private val chatId: Int
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state.asStateFlow()
 
-    private var currentChatId: Int? = null
+    private var typingJob: kotlinx.coroutines.Job? = null
+    private val TYPING_TIMEOUT = 3000L // 3 секунды
 
     init {
-        // Загружаем ID текущего пользователя
-        viewModelScope.launch {
-            val userId = tokenManager.getUserId()?.toIntOrNull()
-            println("👤 ChatViewModel: Текущий пользователь ID = $userId")
-            _state.value = _state.value.copy(currentUserId = userId)
-        }
+        loadChatInfo()
+        loadMessages()
+        observeWebSocketEvents()
 
-        // Следим за состоянием WebSocket
-        viewModelScope.launch {
-            webSocketManager.connectionState.collect { wsState ->
-                val isConnected = when (wsState) {
-                    is com.example.elizarchat.data.remote.websocket.WebSocketState.Connected -> true
-                    else -> false
-                }
-                _state.value = _state.value.copy(isConnectedToWebSocket = isConnected)
-            }
-        }
+        // Подписываемся на чат
+        subscribeToChat()
+    }
 
-        // Подписываемся на новые сообщения из WebSocket
+    private fun subscribeToChat() {
         viewModelScope.launch {
-            webSocketManager.newMessages.collectLatest { event ->
-                if (event.chatId == currentChatId) {
-                    println("📨 ChatViewModel: Получено новое сообщение через WebSocket")
-                    // Проверяем, нет ли дубликата
-                    val isDuplicate = _state.value.messages.any { it.id == event.message.id }
-                    if (!isDuplicate) {
-                        _state.value = _state.value.copy(
-                            messages = (_state.value.messages + event.message) as List<MessageDto>
-                        )
-                    }
-                }
-            }
-        }
-
-        // Подписываемся на индикаторы печатания
-        viewModelScope.launch {
-            webSocketManager.typingEvents.collectLatest { event ->
-                if (event.chatId == currentChatId) {
-                    if (event.isTyping) {
-                        // Добавляем пользователя в набор печатающих
-                        _state.value = _state.value.copy(
-                            typingUsers = _state.value.typingUsers + event.userId
-                        )
-                    } else {
-                        // Удаляем пользователя
-                        _state.value = _state.value.copy(
-                            typingUsers = _state.value.typingUsers - event.userId
-                        )
-                    }
-                }
-            }
-        }
-
-        // Подписываемся на подтверждения отправки
-        viewModelScope.launch {
-            webSocketManager.messageConfirmations.collectLatest { confirmation ->
-                if (confirmation.chatId == currentChatId) {
-                    println("✅ Получено подтверждение отправки сообщения: ${confirmation.messageId}")
-                    // Можно обновить статус сообщения с временного ID на реальный
-                    // Это требует дополнительной логики для отслеживания временных сообщений
-                }
-            }
+            webSocketManager.subscribeToChat(chatId)
+            println("✅ ChatViewModel: Подписались на чат $chatId через WebSocket")
         }
     }
 
-    fun setChatId(chatId: Int) {
-        if (currentChatId == chatId) return
-
-        currentChatId = chatId
-        _state.value = ChatState() // Сброс состояния
-
-        // Подписываемся на события чата через WebSocket
+    private fun observeWebSocketEvents() {
+        // Новые сообщения
         viewModelScope.launch {
-            if (webSocketManager.isConnected()) {
-                webSocketManager.subscribeToChat(chatId)
-                println("✅ ChatViewModel: Подписались на чат $chatId через WebSocket")
+            webSocketManager.newMessages.collectLatest { event ->
+                if (event.getEffectiveChatId() == chatId) {
+                    println("📨 ChatViewModel: Получено новое сообщение через WebSocket")
+
+                    val messageObj = event.message ?: event.data
+
+                    if (messageObj != null) {
+                        // Конвертируем metadata в JsonElement
+                        val metadataJson = try {
+                            if (messageObj.metadata.isNullOrEmpty()) {
+                                JsonObject(emptyMap())
+                            } else {
+                                // Пробуем распарсить как JSON объект
+                                try {
+                                    Json.parseToJsonElement(messageObj.metadata)
+                                } catch (e: Exception) {
+                                    // Если не получилось, используем как строку
+                                    JsonPrimitive(messageObj.metadata)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            JsonObject(emptyMap())
+                        }
+
+                        // Создаем SenderDto если есть информация об отправителе
+                        val senderDto = if (messageObj.senderId != null || messageObj.senderUsername != null) {
+                            SenderDto(
+                                id = messageObj.senderId ?: messageObj.senderIdAlt ?: 0,
+                                username = messageObj.senderUsername,
+                                displayName = messageObj.senderDisplayName,
+                                avatarUrl = messageObj.senderAvatarUrl
+                            )
+                        } else null
+
+                        val messageDto = MessageDto(
+                            id = messageObj.id,
+                            chatId = messageObj.getEffectiveChatId(),
+                            userId = messageObj.getEffectiveSenderId(),
+                            content = messageObj.content,
+                            type = messageObj.type,
+                            metadata = metadataJson as JsonObject,  // Используем JsonElement
+                            replyTo = messageObj.replyTo,
+                            status = messageObj.status ?: "sent",
+                            createdAt = messageObj.getEffectiveCreatedAt(),
+                            updatedAt = messageObj.updatedAt ?: messageObj.updatedAtAlt,
+                            deletedAt = messageObj.deletedAt,
+                            readBy = messageObj.readBy ?: emptyList(),
+                            sender = senderDto
+                        )
+
+                        // Проверяем, нет ли дубликата
+                        val isDuplicate = _state.value.messages.any { it.id == messageDto.id }
+                        if (!isDuplicate) {
+                            _state.value = _state.value.copy(
+                                messages = _state.value.messages + messageDto
+                            )
+                            println("✅ Добавлено сообщение ${messageDto.id} в состояние")
+                        } else {
+                            println("⚠️ Сообщение ${messageDto.id} уже существует, пропускаем")
+                        }
+                    } else {
+                        println("⚠️ Получено событие new_message без сообщения")
+                    }
+                }
             }
         }
 
-        // Загружаем данные
-        loadChatInfo()
-        loadMessages(refresh = true)
+        // События печатания
+        viewModelScope.launch {
+            webSocketManager.typingEvents.collectLatest { event ->
+                if (event.chatId == chatId) {
+                    val currentUserId = getCurrentUserId()
+                    if (event.userId != currentUserId) {
+                        if (event.isTyping) {
+                            _state.value = _state.value.copy(
+                                typingUsers = _state.value.typingUsers + event.userId
+                            )
+                            println("⌨️ Пользователь ${event.userId} начал печатать")
+                        } else {
+                            _state.value = _state.value.copy(
+                                typingUsers = _state.value.typingUsers - event.userId
+                            )
+                            println("⌨️ Пользователь ${event.userId} закончил печатать")
+                        }
+                    }
+                }
+            }
+        }
+
+        // Статус подключения
+        viewModelScope.launch {
+            webSocketManager.connectionState.collectLatest { state ->
+                _state.value = _state.value.copy(
+                    connectionStatus = state
+                )
+                println("🔌 ChatViewModel: Статус подключения изменился на $state")
+            }
+        }
+
+        // Подтверждения отправки сообщений
+        viewModelScope.launch {
+            webSocketManager.messageConfirmations.collectLatest { confirmation ->
+                if (confirmation.chatId == chatId) {
+                    println("✅ Получено подтверждение отправки сообщения: ${confirmation.messageId}")
+                    // Обновляем статус сообщения в списке
+                    _state.value = _state.value.copy(
+                        messages = _state.value.messages.map { message ->
+                            if (message.id < 0) { // Временное сообщение
+                                message.copy(
+                                    id = confirmation.messageId,
+                                    status = "sent"
+                                )
+                            } else message
+                        }
+                    )
+                }
+            }
+        }
+
+        // Ошибки WebSocket
+        viewModelScope.launch {
+            webSocketManager.errors.collectLatest { error ->
+                println("❌ Ошибка WebSocket: ${error.message}")
+                _state.value = _state.value.copy(
+                    error = "WebSocket error: ${error.message}"
+                )
+            }
+        }
     }
 
     fun loadChatInfo() {
-        val chatId = currentChatId ?: return
-
         viewModelScope.launch {
             try {
                 val response = apiManager.getChatById(chatId)
-                if (response.isSuccessful && response.body()?.success == true) {
-                    val chat = response.body()?.data
-                    _state.value = _state.value.copy(
-                        chat = chat,
-                        error = null
-                    )
-                } else {
-                    _state.value = _state.value.copy(
-                        error = response.body()?.error ?: "Failed to load chat"
-                    )
+                if (response.isSuccessful) {
+                    val apiResponse = response.body()
+                    if (apiResponse?.success == true) {
+                        val chat = apiResponse.chat
+                        if (chat != null) {
+                            _state.value = _state.value.copy(
+                                chatInfo = ChatInfo(
+                                    id = chat.id,
+                                    name = chat.name ?: "Chat",
+                                    type = chat.type,
+                                    members = chat.members?.map { member ->
+                                        ChatMember(
+                                            userId = member.userId,
+                                            role = member.role
+                                        )
+                                    } ?: emptyList()
+                                )
+                            )
+                            println("✅ Информация о чате загружена: ${chat.name}")
+                        }
+                    }
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    error = "Network error: ${e.message}"
-                )
+                println("❌ Ошибка загрузки информации о чате: ${e.message}")
             }
         }
     }
 
     fun loadMessages(refresh: Boolean = false) {
-        val chatId = currentChatId ?: return
-
         viewModelScope.launch {
             try {
                 if (refresh) {
                     _state.value = _state.value.copy(
-                        isRefreshing = true,
-                        currentOffset = 0,
-                        hasMoreMessages = true,
-                        messages = emptyList()
+                        isLoading = true,
+                        messages = emptyList(),
+                        currentPage = 1,
+                        hasMoreMessages = true
                     )
                 } else {
-                    _state.value = _state.value.copy(isLoading = true)
+                    _state.value = _state.value.copy(isLoadingMore = true)
                 }
+
+                val page = if (refresh) 1 else _state.value.currentPage
+                val limit = 50
+                val offset = (page - 1) * limit
 
                 val response = apiManager.getMessages(
                     chatId = chatId,
-                    limit = 50,
-                    offset = _state.value.currentOffset
+                    limit = limit,
+                    offset = offset
                 )
 
                 if (response.isSuccessful) {
                     val apiResponse = response.body()
                     if (apiResponse?.success == true) {
-                        val messagesResponse = apiResponse.data
-                        if (messagesResponse != null) {
-                            val currentMessages = _state.value.messages
-                            val newMessages = if (refresh) {
-                                messagesResponse.messages
-                            } else {
-                                currentMessages + messagesResponse.messages
-                            }
+                        val newMessages = apiResponse.messages ?: emptyList()
 
-                            _state.value = _state.value.copy(
-                                messages = newMessages,
-                                hasMoreMessages = messagesResponse.hasMore,
-                                currentOffset = if (refresh) messagesResponse.messages.size
-                                else _state.value.currentOffset + messagesResponse.messages.size,
-                                isLoading = false,
-                                isRefreshing = false,
-                                isLoaded = true,
-                                error = null
-                            )
-                        }
-                    } else {
+                        val allMessages = if (refresh) {
+                            newMessages
+                        } else {
+                            _state.value.messages + newMessages
+                        }.distinctBy { it.id } // Убираем дубликаты по ID
+
                         _state.value = _state.value.copy(
+                            messages = allMessages,
+                            hasMoreMessages = newMessages.size >= limit,
+                            currentPage = if (refresh) 2 else page + 1,
                             isLoading = false,
-                            isRefreshing = false,
-                            error = apiResponse?.error ?: "Failed to load messages"
+                            isLoadingMore = false,
+                            error = null
                         )
+
+                        println("✅ Загружено ${newMessages.size} сообщений")
+
+                        // Отмечаем сообщения как прочитанные
+                        if (newMessages.isNotEmpty()) {
+                            markMessagesAsRead(newMessages.map { it.id })
+                        }
                     }
                 } else {
                     _state.value = _state.value.copy(
                         isLoading = false,
-                        isRefreshing = false,
+                        isLoadingMore = false,
                         error = "HTTP ${response.code()}"
                     )
                 }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    isRefreshing = false,
-                    error = "Network error: ${e.message}"
+                    isLoadingMore = false,
+                    error = e.message
                 )
+                println("❌ Ошибка загрузки сообщений: ${e.message}")
             }
         }
-    }
-
-    fun updateMessageText(text: String) {
-        _state.value = _state.value.copy(newMessageText = text)
-
-        // Отправляем статус печатания через WebSocket
-        currentChatId?.let { chatId ->
-            val isTyping = text.isNotEmpty()
-            webSocketManager.sendTypingStatus(chatId, isTyping)
-        }
-    }
-
-    fun sendMessage() {
-        val chatId = currentChatId ?: return
-        val text = _state.value.newMessageText.trim()
-        if (text.isEmpty()) return
-
-        viewModelScope.launch {
-            try {
-                _state.value = _state.value.copy(isSending = true)
-
-                // Оптимистичное обновление UI
-                val tempMessageId = System.currentTimeMillis().toInt()
-                val tempMessage = MessageDto(
-                    id = tempMessageId,
-                    content = text,
-                    senderId = _state.value.currentUserId ?: 0,
-                    chatId = chatId,
-                    type = "text",
-                    status = "sending",
-                    createdAt = java.time.Instant.now().toString()
-                )
-
-                _state.value = _state.value.copy(
-                    messages = _state.value.messages + tempMessage,
-                    newMessageText = "",
-                    error = null
-                )
-
-                // Пробуем отправить через WebSocket в первую очередь
-                var wsSuccess = false
-                if (webSocketManager.isConnected()) {
-                    wsSuccess = webSocketManager.sendChatMessage(chatId, text)
-                    println("📤 ChatViewModel: Отправка через WebSocket, успех: $wsSuccess")
-                }
-
-                // Если WebSocket не доступен, используем REST API как fallback
-                if (!wsSuccess) {
-                    println("📤 ChatViewModel: WebSocket не доступен, используем REST API")
-
-                    // ИСПРАВЛЕНО: отправляем null или пустую JSON строку
-                    val request = SendMessageRequest(
-                        content = text,
-                        type = "text",
-                        metadata = {}, // ИЛИ "{}" для пустого JSON
-                        replyTo = null
-                    )
-
-                    val response = apiManager.sendMessage(chatId, request)
-                    if (response.isSuccessful && response.body()?.success == true) {
-                        val sentMessage = response.body()?.data
-                        if (sentMessage != null) {
-                            // Заменяем временное сообщение на настоящее
-                            _state.value = _state.value.copy(
-                                messages = _state.value.messages.filter { it.id != tempMessageId } + sentMessage
-                            )
-                        }
-                    } else {
-                        // Помечаем сообщение как ошибочное
-                        _state.value = _state.value.copy(
-                            messages = _state.value.messages.map { msg ->
-                                if (msg.id == tempMessageId) {
-                                    msg.copy(status = "error")
-                                } else {
-                                    msg
-                                }
-                            },
-                            error = response.body()?.error ?: "Failed to send message"
-                        )
-                    }
-                }
-
-                _state.value = _state.value.copy(isSending = false)
-
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSending = false,
-                    error = "Network error: ${e.message}"
-                )
-
-                // Помечаем сообщение как ошибочное
-                _state.value = _state.value.copy(
-                    messages = _state.value.messages.map { msg ->
-                        if (msg.content == text && msg.status == "sending") {
-                            msg.copy(status = "error")
-                        } else {
-                            msg
-                        }
-                    }
-                )
-            }
-        }
-    }
-
-    fun markAsRead() {
-        currentChatId?.let { chatId ->
-            // Получаем все непрочитанные сообщения в этом чате
-            val currentUserId = _state.value.currentUserId
-            val unreadMessageIds = _state.value.messages
-                .filter {
-                    currentUserId != null &&
-                            it.senderId != currentUserId && // Не наши сообщения
-                            it.status != "read"
-                }
-                .map { it.id }
-
-            if (unreadMessageIds.isNotEmpty()) {
-                // TODO: Реализовать отправку read receipt через API
-                println("👁️ Marking messages as read: $unreadMessageIds")
-            }
-        }
-    }
-
-    fun refreshMessages() {
-        loadMessages(refresh = true)
     }
 
     fun loadMoreMessages() {
-        if (!_state.value.isLoading && _state.value.hasMoreMessages) {
+        if (!_state.value.isLoadingMore && _state.value.hasMoreMessages) {
             loadMessages()
         }
+    }
+
+    // ИСПРАВЛЕНО: Добавляем параметр replyTo в метод sendMessage
+    fun sendMessage(content: String, replyTo: Int? = null) {
+        viewModelScope.launch {
+            try {
+                println("📤 Отправка сообщения через WebSocket: $content")
+
+                val currentUserId = getCurrentUserId()
+
+                // Оптимистичное добавление сообщения
+                val tempMessage = MessageDto(
+                    id = -System.currentTimeMillis().toInt(),
+                    chatId = chatId,
+                    userId = currentUserId,
+                    content = content,
+                    type = "text",
+                    metadata = JsonObject(emptyMap()),  // Пустой JSON объект
+                    status = "sending",
+                    createdAt = Instant.now().toString()
+                )
+
+                _state.value = _state.value.copy(
+                    messages = _state.value.messages + tempMessage
+                )
+
+                // Отправляем через WebSocket
+                val success = webSocketManager.sendChatMessage(
+                    chatId = chatId,
+                    content = content,
+                    replyTo = replyTo
+                )
+
+                if (!success) {
+                    // Используем REST API как fallback
+                    val response = apiManager.sendTextMessage(
+                        chatId = chatId,
+                        content = content,
+                        replyTo = replyTo
+                    )
+
+                    if (response.isSuccessful) {
+                        val apiResponse = response.body()
+                        if (apiResponse?.success == true) {
+                            println("✅ Сообщение отправлено через REST API")
+                            // Обновляем временное сообщение с реальным ID
+                            apiResponse.data?.let { messageDto ->
+                                _state.value = _state.value.copy(
+                                    messages = _state.value.messages.map { msg ->
+                                        if (msg.id < 0) messageDto else msg
+                                    }
+                                )
+                            }
+                        } else {
+                            throw Exception(apiResponse?.error ?: "Failed to send message")
+                        }
+                    } else {
+                        throw Exception("HTTP ${response.code()}")
+                    }
+                }
+
+                // Отменяем индикатор печатания
+                sendTypingStatus(false)
+
+            } catch (e: Exception) {
+                println("❌ Ошибка отправки сообщения: ${e.message}")
+                _state.value = _state.value.copy(
+                    error = "Не удалось отправить сообщение"
+                )
+            }
+        }
+    }
+
+    fun sendTypingStatus(isTyping: Boolean) {
+        // Отменяем предыдущую задачу
+        typingJob?.cancel()
+
+        if (isTyping) {
+            // Запускаем новую задачу для отправки статуса печатания
+            typingJob = viewModelScope.launch {
+                webSocketManager.sendTypingStatus(chatId, true)
+
+                // Отправляем статус "не печатает" через TYPING_TIMEOUT
+                delay(TYPING_TIMEOUT)
+                webSocketManager.sendTypingStatus(chatId, false)
+            }
+        } else {
+            // Немедленно отправляем статус "не печатает"
+            viewModelScope.launch {
+                webSocketManager.sendTypingStatus(chatId, false)
+            }
+        }
+    }
+
+    // ИСПРАВЛЕНО: Добавлен метод markMessagesAsRead
+    fun markMessagesAsRead(messageIds: List<Int>) {
+        viewModelScope.launch {
+            try {
+                webSocketManager.sendReadReceipt(chatId, messageIds)
+                println("👁️ Отправлено подтверждение прочтения для ${messageIds.size} сообщений")
+            } catch (e: Exception) {
+                println("⚠️ Не удалось отметить сообщения как прочитанные: ${e.message}")
+            }
+        }
+    }
+
+    // ИСПРАВЛЕНО: getCurrentUserId возвращает Int
+    private suspend fun getCurrentUserId(): Int {
+        // Получаем ID текущего пользователя из токена
+        return tokenManager.getUserId()?.toIntOrNull() ?: 0
     }
 
     fun clearError() {
         _state.value = _state.value.copy(error = null)
     }
 
-    // Добавить в ChatViewModel.kt
-    fun retrySendMessage(failedMessage: MessageDto) {
-        val chatId = currentChatId ?: return
-        val text = failedMessage.content
-
-        viewModelScope.launch {
-            try {
-                // Удаляем старое сообщение с ошибкой
-                _state.value = _state.value.copy(
-                    messages = _state.value.messages.filter { it.id != failedMessage.id }
-                )
-
-                // Пробуем отправить заново через WebSocket
-                var wsSuccess = false
-                if (webSocketManager.isConnected()) {
-                    wsSuccess = webSocketManager.sendChatMessage(chatId, text)
-                }
-
-                // Если WebSocket не доступен, используем REST API
-                if (!wsSuccess) {
-                    // ИСПРАВЛЕНО
-                    val request = SendMessageRequest(
-                        content = text,
-                        type = "text",
-                        metadata = {}, // ИЛИ "{}"
-                        replyTo = null
-                    )
-
-                    val response = apiManager.sendMessage(chatId, request)
-                    if (response.isSuccessful && response.body()?.success == true) {
-                        val sentMessage = response.body()?.data
-                        if (sentMessage != null) {
-                            _state.value = _state.value.copy(
-                                messages = _state.value.messages + sentMessage,
-                                error = null
-                            )
-                        }
-                    } else {
-                        _state.value = _state.value.copy(
-                            error = "Failed to resend message"
-                        )
-                    }
-                }
-
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    error = "Retry failed: ${e.message}"
-                )
-            }
-        }
-    }
-
     override fun onCleared() {
         super.onCleared()
-        // Отмечаем сообщения как прочитанные при закрытии чата
-        markAsRead()
-
-        // Отписываемся от чата в WebSocket
-        currentChatId?.let { chatId ->
-            if (webSocketManager.isConnected()) {
-                webSocketManager.unsubscribeFromChat(chatId)
-            }
+        // Отписываемся от чата
+        viewModelScope.launch {
+            webSocketManager.unsubscribeFromChat(chatId)
+            println("📤 ChatViewModel: Отписались от чата $chatId")
         }
+        typingJob?.cancel()
     }
 
     companion object {
         fun provideFactory(
             apiManager: ApiManager,
+            webSocketManager: WebSocketManager,
             tokenManager: TokenManager,
-            webSocketManager: WebSocketManager // ДОБАВЛЕНО
+            chatId: Int
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return ChatViewModel(apiManager, tokenManager, webSocketManager) as T
+                return ChatViewModel(apiManager, webSocketManager, tokenManager, chatId) as T
             }
         }
     }

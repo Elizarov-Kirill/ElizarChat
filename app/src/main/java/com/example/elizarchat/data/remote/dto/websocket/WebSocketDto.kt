@@ -1,4 +1,3 @@
-// 📁 data/remote/dto/websocket/WebSocketDto.kt
 package com.example.elizarchat.data.remote.dto.websocket
 
 import kotlinx.serialization.SerialName
@@ -11,15 +10,13 @@ import kotlinx.serialization.json.jsonPrimitive
 // ВХОДЯЩИЕ сообщения (от клиента к серверу)
 // ========================
 
-// data/remote/dto/websocket/WebSocketDto.kt
-
 @Serializable
 sealed class WebSocketIncomingMessage
 
 @Serializable
 @SerialName("ping")
 data class PingMessage(
-    @SerialName("type") val type: String = "ping"
+    val timestamp: String? = null  // Добавляем опциональный параметр
 ) : WebSocketIncomingMessage()
 
 @Serializable
@@ -34,32 +31,28 @@ data class TypingMessage(
 data class SendMessageRequest(
     val chatId: Int,
     val content: String,
-    val messageType: String = "text",
-    val replyTo: Int? = null,
-    val metadata: String = "{}"
+    @SerialName("messageType") val messageType: String = "text",  // Есть дефолтное значение
+    @SerialName("replyTo") val replyTo: Int? = null,
+    val metadata: String = "{}"  // Есть дефолтное значение
 ) : WebSocketIncomingMessage()
 
 @Serializable
 @SerialName("subscribe_chat")
 data class SubscribeChatMessage(
-    @SerialName("type") val type: String = "subscribe_chat",
-    @SerialName("chatId") val chatId: Int
+    val chatId: Int
 ) : WebSocketIncomingMessage()
 
 @Serializable
 @SerialName("unsubscribe_chat")
 data class UnsubscribeChatMessage(
-    @SerialName("type") val type: String = "unsubscribe_chat",
-    @SerialName("chatId") val chatId: Int
+    val chatId: Int
 ) : WebSocketIncomingMessage()
 
-// Подтверждение прочтения
 @Serializable
 @SerialName("read_receipt")
 data class ReadReceiptMessage(
-    @SerialName("type") val type: String = "read_receipt",
-    @SerialName("chatId") val chatId: Int,
-    @SerialName("messageIds") val messageIds: List<Int>
+    val chatId: Int,
+    val messageIds: List<Int>
 ) : WebSocketIncomingMessage()
 
 // ========================
@@ -67,191 +60,236 @@ data class ReadReceiptMessage(
 // ========================
 
 @Serializable
-sealed class WebSocketOutgoingMessage {
-    @SerialName("type") abstract val type: String
-}
+sealed class WebSocketOutgoingMessage
 
-// Welcome сообщение (при подключении)
+// Welcome сообщение
 @Serializable
 @SerialName("welcome")
 data class WelcomeMessage(
-    @SerialName("type") override val type: String = "welcome",
-    @SerialName("message") val message: String,
-    @SerialName("user") val user: WelcomeUser? = null,
-    @SerialName("chats") val chats: List<WelcomeChat> = emptyList(),
-    @SerialName("serverInfo") val serverInfo: ServerInfo? = null
+    val message: String,
+    val user: WelcomeUser? = null,
+    val chats: List<WelcomeChat> = emptyList(),
+    val serverInfo: ServerInfo? = null
 ) : WebSocketOutgoingMessage()
 
 // Новое сообщение
 @Serializable
 @SerialName("new_message")
 data class NewMessageEvent(
-    @SerialName("type") override val type: String = "new_message",
-    @SerialName("chatId") val chatId: Int,
-    @SerialName("message") val message: ChatMessage,
-    @SerialName("senderId") val senderId: Int, // Добавлено из сервера
-    @SerialName("senderEmail") val senderEmail: String? = null, // Добавлено из сервера
-    @SerialName("timestamp") val timestamp: String // Добавлено из сервера
-) : WebSocketOutgoingMessage()
+    @SerialName("chatId")
+    val chatId: Int? = null,
 
-// Сообщение о печатании
+    @SerialName("chat_id")
+    val chatIdAlt: Int? = null,
+
+    @SerialName("senderId")
+    val senderId: Int? = null,
+
+    @SerialName("sender_id")
+    val senderIdAlt: Int? = null,
+
+    @SerialName("senderEmail")
+    val senderEmail: String? = null,
+
+    val timestamp: String? = null,
+
+    val message: ChatMessage? = null,
+
+    val data: ChatMessage? = null
+) : WebSocketOutgoingMessage() {
+    fun getEffectiveChatId(): Int = chatId ?: chatIdAlt ?: message?.getEffectiveChatId() ?: 0
+    fun getEffectiveSenderId(): Int = senderId ?: senderIdAlt ?: message?.getEffectiveSenderId() ?: 0
+}
+
+// Модель сообщения
 @Serializable
-@SerialName("user_typing")
-data class UserTypingEvent(
-    @SerialName("type") override val type: String = "user_typing",
-    @SerialName("chatId") val chatId: Int,
-    @SerialName("userId") val userId: Int,
-    @SerialName("userEmail") val userEmail: String? = null, // Добавлено из сервера
-    @SerialName("isTyping") val isTyping: Boolean,
-    @SerialName("timestamp") val timestamp: String // Добавлено из сервера
-) : WebSocketOutgoingMessage()
+data class ChatMessage(
+    val id: Int,
 
-// Подтверждение отправки сообщения
+    @SerialName("chatId")
+    val chatId: Int? = null,
+
+    @SerialName("chat_id")
+    val chatIdAlt: Int? = null,
+
+    @SerialName("senderId")
+    val senderId: Int? = null,
+
+    @SerialName("sender_id")
+    val senderIdAlt: Int? = null,
+
+    @SerialName("sender_username")
+    val senderUsername: String? = null,
+
+    @SerialName("sender_display_name")
+    val senderDisplayName: String? = null,
+
+    @SerialName("sender_avatar_url")
+    val senderAvatarUrl: String? = null,
+
+    val content: String,
+
+    val type: String = "text",
+
+    @SerialName("message_type")
+    val messageType: String? = null,
+
+    val metadata: String? = "{}",
+
+    @SerialName("reply_to")
+    val replyTo: Int? = null,
+
+    val status: String? = null,
+
+    @SerialName("createdAt")
+    val createdAt: String? = null,
+
+    @SerialName("created_at")
+    val createdAtAlt: String? = null,
+
+    @SerialName("updatedAt")
+    val updatedAt: String? = null,
+
+    @SerialName("updated_at")
+    val updatedAtAlt: String? = null,
+
+    @SerialName("deleted_at")
+    val deletedAt: String? = null,
+
+    @SerialName("is_edited")
+    val isEdited: Boolean = false,
+
+    @SerialName("read_by")
+    val readBy: List<Int>? = emptyList(),
+
+    @SerialName("read_count")
+    val readCount: Int = 0
+) {
+    fun getEffectiveChatId(): Int = chatId ?: chatIdAlt ?: 0
+    fun getEffectiveSenderId(): Int = senderId ?: senderIdAlt ?: 0
+    fun getEffectiveCreatedAt(): String = createdAt ?: createdAtAlt ?: ""
+}
+
+// Подтверждение отправки
 @Serializable
 @SerialName("message_sent")
 data class MessageSentConfirmation(
-    @SerialName("type") override val type: String = "message_sent",
     @SerialName("messageId") val messageId: Int,
     @SerialName("chatId") val chatId: Int,
-    @SerialName("timestamp") val timestamp: String
+    val timestamp: String
 ) : WebSocketOutgoingMessage()
 
-// Подтверждение подписки на чат
+// Подтверждение подписки
 @Serializable
 @SerialName("chat_subscribed")
 data class ChatSubscribed(
-    @SerialName("type") override val type: String = "chat_subscribed",
     @SerialName("chatId") val chatId: Int,
-    @SerialName("timestamp") val timestamp: String
+    val timestamp: String
 ) : WebSocketOutgoingMessage()
 
-// Подтверждение отписки от чата
+// Подтверждение отписки
 @Serializable
 @SerialName("chat_unsubscribed")
 data class ChatUnsubscribed(
-    @SerialName("type") override val type: String = "chat_unsubscribed",
     @SerialName("chatId") val chatId: Int,
-    @SerialName("timestamp") val timestamp: String
+    val timestamp: String
 ) : WebSocketOutgoingMessage()
 
 // Подтверждение прочтения
 @Serializable
 @SerialName("read_receipt_ack")
 data class ReadReceiptAck(
-    @SerialName("type") override val type: String = "read_receipt_ack",
     @SerialName("chatId") val chatId: Int,
     @SerialName("messageIds") val messageIds: List<Int>,
-    @SerialName("timestamp") val timestamp: String
+    val timestamp: String
 ) : WebSocketOutgoingMessage()
 
-// Pong (ответ на ping)
+// Pong
 @Serializable
 @SerialName("pong")
 data class PongMessage(
-    @SerialName("type") override val type: String = "pong",
-    @SerialName("timestamp") val timestamp: String,
-    @SerialName("serverTime") val serverTime: Long? = null // Добавлено из сервера
+    val timestamp: String,
+    @SerialName("serverTime") val serverTime: Long? = null
 ) : WebSocketOutgoingMessage()
 
 // Ошибка
 @Serializable
 @SerialName("error")
 data class ErrorMessage(
-    @SerialName("type") override val type: String = "error",
-    @SerialName("code") val code: String? = null,
-    @SerialName("message") val message: String,
-    @SerialName("timestamp") val timestamp: String // Добавлено из сервера
+    val code: String? = null,
+    val message: String,
+    val timestamp: String
 ) : WebSocketOutgoingMessage()
 
-// Системное уведомление
+// Системное сообщение
 @Serializable
 @SerialName("system")
 data class SystemMessage(
-    @SerialName("type") override val type: String = "system",
-    @SerialName("message") val message: String,
-    @SerialName("data") val data: Map<String, String>? = null
+    val message: String,
+    val data: Map<String, String>? = null
 ) : WebSocketOutgoingMessage()
 
-// Обновление статуса пользователя
+// Печатание
+@Serializable
+@SerialName("user_typing")
+data class UserTypingEvent(
+    @SerialName("chatId") val chatId: Int,
+    @SerialName("userId") val userId: Int,
+    @SerialName("userEmail") val userEmail: String? = null,
+    @SerialName("isTyping") val isTyping: Boolean,
+    val timestamp: String
+) : WebSocketOutgoingMessage()
+
+// Статус пользователя
 @Serializable
 @SerialName("user_status")
 data class UserStatusUpdate(
-    @SerialName("type") override val type: String = "user_status",
     @SerialName("userId") val userId: Int,
     @SerialName("isOnline") val isOnline: Boolean,
-    @SerialName("status") val status: String? = null,
+    val status: String? = null,
     @SerialName("lastSeen") val lastSeen: String? = null
 ) : WebSocketOutgoingMessage()
 
-// Обновление чата (новый участник, изменение названия и т.д.)
+// Обновление чата
 @Serializable
 @SerialName("chat_update")
 data class ChatUpdate(
-    @SerialName("type") override val type: String = "chat_update",
     @SerialName("chatId") val chatId: Int,
-    @SerialName("action") val action: String,
-    @SerialName("data") val data: Map<String, String>? = null,
-    @SerialName("timestamp") val timestamp: String
+    val action: String,
+    val data: Map<String, String>? = null,
+    val timestamp: String
 ) : WebSocketOutgoingMessage()
 
 // ========================
-// ОБЩИЕ МОДЕЛИ
+// ВСПОМОГАТЕЛЬНЫЕ МОДЕЛИ
 // ========================
 
 @Serializable
-data class ChatMessage(
-    @SerialName("id") val id: Int,
-    @SerialName("content") val content: String,
-    @SerialName("senderId") val senderId: Int, // Сервер использует user_id, но в сообщениях может быть senderId
-    @SerialName("user_id") val userId: Int? = null, // Альтернативное имя
-    @SerialName("chatId") val chatId: Int,
-    @SerialName("chat_id") val chatIdAlt: Int? = null, // Альтернативное имя
-    @SerialName("type") val type: String = "text",
-    @SerialName("message_type") val messageType: String? = null, // Альтернативное имя
-    @SerialName("status") val status: String? = null,
-    @SerialName("createdAt") val createdAt: String,
-    @SerialName("created_at") val createdAtAlt: String? = null, // Альтернативное имя
-    @SerialName("updatedAt") val updatedAt: String? = null,
-    @SerialName("metadata") val metadata: Map<String, String>? = null,
-    @SerialName("replyTo") val replyTo: Int? = null,
-    @SerialName("reply_to_id") val replyToId: Int? = null // Альтернативное имя
-) {
-    // Helper для получения ID чата из разных полей
-    fun getEffectiveChatId(): Int = chatId ?: chatIdAlt ?: 0
-
-    // Helper для получения ID отправителя
-    fun getEffectiveSenderId(): Int = senderId ?: userId ?: 0
-
-    // Helper для получения времени создания
-    fun getEffectiveCreatedAt(): String = createdAt ?: createdAtAlt ?: ""
-}
-
-@Serializable
 data class WelcomeUser(
-    @SerialName("id") val id: Int,
-    @SerialName("email") val email: String,
-    @SerialName("username") val username: String,
+    val id: Int,
+    val email: String,
+    val username: String,
     @SerialName("displayName") val displayName: String? = null
 )
 
 @Serializable
 data class WelcomeChat(
-    @SerialName("id") val id: Int,
-    @SerialName("name") val name: String,
-    @SerialName("type") val type: String,
+    val id: Int,
+    val name: String,
+    val type: String,
     @SerialName("unreadCount") val unreadCount: Int = 0,
     @SerialName("lastMessageAt") val lastMessageAt: String? = null
 )
 
 @Serializable
 data class ServerInfo(
-    @SerialName("version") val version: String,
-    @SerialName("timestamp") val timestamp: String,
+    val version: String,
+    val timestamp: String,
     @SerialName("connectionId") val connectionId: String
 )
 
 // ========================
-// УТИЛИТЫ ДЛЯ РАБОТЫ С WEBSOCKET
+// УТИЛИТЫ
 // ========================
 
 object WebSocketMessageHelper {
@@ -259,9 +297,9 @@ object WebSocketMessageHelper {
         ignoreUnknownKeys = true
         isLenient = true
         coerceInputValues = true
+        classDiscriminator = "type"
     }
 
-    // Функция для определения типа сообщения
     fun getMessageType(jsonString: String): String? {
         return try {
             val jsonElement = json.parseToJsonElement(jsonString)
@@ -275,16 +313,22 @@ object WebSocketMessageHelper {
         }
     }
 
-    // Создание метаданных в формате JSON строки
-    fun createMetadata(vararg pairs: Pair<String, String>): String {
-        return if (pairs.isEmpty()) {
-            "{}" // Пустой JSON объект
-        } else {
-            Json.encodeToString(pairs.toMap())
+    fun serializeIncomingMessage(message: WebSocketIncomingMessage): String {
+        return try {
+            val json = Json {
+                encodeDefaults = true
+                classDiscriminator = "type"
+                explicitNulls = false
+            }
+            val result = json.encodeToString(message)
+            println("📤 Сериализовано (${result.length} chars): $result")
+            result
+        } catch (e: Exception) {
+            println("❌ Ошибка сериализации: ${e.message}")
+            "{}"
         }
     }
 
-    // Десериализация входящего сообщения (от клиента к серверу)
     fun deserializeIncomingMessage(jsonString: String): WebSocketIncomingMessage? {
         return try {
             val type = getMessageType(jsonString) ?: return null
@@ -303,24 +347,23 @@ object WebSocketMessageHelper {
                 else -> null
             }
         } catch (e: Exception) {
-            println("❌ Ошибка десериализации входящего сообщения: ${e.message}")
+            println("❌ Ошибка десериализации входящего: ${e.message}")
             null
         }
     }
 
-    // Десериализация исходящего сообщения (от сервера к клиенту)
     fun deserializeOutgoingMessage(jsonString: String): WebSocketOutgoingMessage? {
         return try {
             val type = getMessageType(jsonString) ?: return null
             val json = Json {
                 ignoreUnknownKeys = true
                 classDiscriminator = "type"
+                coerceInputValues = true
             }
 
-            when (type) {
+            val message = when (type) {
                 "welcome" -> json.decodeFromString(WelcomeMessage.serializer(), jsonString)
                 "new_message" -> json.decodeFromString(NewMessageEvent.serializer(), jsonString)
-                "user_typing" -> json.decodeFromString(UserTypingEvent.serializer(), jsonString)
                 "message_sent" -> json.decodeFromString(MessageSentConfirmation.serializer(), jsonString)
                 "chat_subscribed" -> json.decodeFromString(ChatSubscribed.serializer(), jsonString)
                 "chat_unsubscribed" -> json.decodeFromString(ChatUnsubscribed.serializer(), jsonString)
@@ -328,91 +371,20 @@ object WebSocketMessageHelper {
                 "pong" -> json.decodeFromString(PongMessage.serializer(), jsonString)
                 "error" -> json.decodeFromString(ErrorMessage.serializer(), jsonString)
                 "system" -> json.decodeFromString(SystemMessage.serializer(), jsonString)
+                "user_typing" -> json.decodeFromString(UserTypingEvent.serializer(), jsonString)
                 "user_status" -> json.decodeFromString(UserStatusUpdate.serializer(), jsonString)
                 "chat_update" -> json.decodeFromString(ChatUpdate.serializer(), jsonString)
                 else -> {
-                    println("⚠️ Неизвестный тип сообщения: $type")
+                    println("⚠️ Неизвестный тип: $type")
                     null
                 }
             }
+
+            message
         } catch (e: Exception) {
-            println("❌ Ошибка десериализации исходящего сообщения: ${e.message}")
-            println("📝 Сырое сообщение: ${jsonString.take(200)}...")
+            println("❌ Ошибка десериализации исходящего: ${e.message}")
+            println("📝 Сырое: ${jsonString.take(200)}...")
             null
         }
     }
-
-    // Сериализация входящего сообщения
-    fun serializeIncomingMessage(message: WebSocketIncomingMessage): String {
-        return try {
-            val json = Json {
-                encodeDefaults = true
-                classDiscriminator = "type"
-            }
-            json.encodeToString(message)
-        } catch (e: Exception) {
-            println("❌ Ошибка сериализации входящего сообщения: ${e.message}")
-            "{}"
-        }
-    }
-}
-
-// ========================
-// КОНСТАНТЫ ДЛЯ WEBSOCKET
-// ========================
-
-object WebSocketConstants {
-    // Типы сообщений (клиент -> сервер)
-    const val TYPE_PING = "ping"
-    const val TYPE_TYPING = "typing"
-    const val TYPE_SEND_MESSAGE = "send_message" // ИСПРАВЛЕНО
-    const val TYPE_SUBSCRIBE_CHAT = "subscribe_chat" // ИСПРАВЛЕНО
-    const val TYPE_UNSUBSCRIBE_CHAT = "unsubscribe_chat" // ИСПРАВЛЕНО
-    const val TYPE_READ_RECEIPT = "read_receipt"
-
-    // Типы сообщений (сервер -> клиент)
-    const val TYPE_WELCOME = "welcome"
-    const val TYPE_NEW_MESSAGE = "new_message"
-    const val TYPE_USER_TYPING = "user_typing"
-    const val TYPE_MESSAGE_SENT = "message_sent"
-    const val TYPE_CHAT_SUBSCRIBED = "chat_subscribed"
-    const val TYPE_CHAT_UNSUBSCRIBED = "chat_unsubscribed"
-    const val TYPE_READ_RECEIPT_ACK = "read_receipt_ack"
-    const val TYPE_PONG = "pong"
-    const val TYPE_ERROR = "error"
-    const val TYPE_SYSTEM = "system"
-    const val TYPE_USER_STATUS = "user_status"
-    const val TYPE_CHAT_UPDATE = "chat_update"
-
-    // Статусы сообщений
-    const val STATUS_SENDING = "sending"
-    const val STATUS_SENT = "sent"
-    const val STATUS_DELIVERED = "delivered"
-    const val STATUS_READ = "read"
-    const val STATUS_ERROR = "error"
-
-    // Типы сообщений
-    const val MESSAGE_TYPE_TEXT = "text"
-    const val MESSAGE_TYPE_IMAGE = "image"
-    const val MESSAGE_TYPE_FILE = "file"
-    const val MESSAGE_TYPE_AUDIO = "audio"
-    const val MESSAGE_TYPE_VIDEO = "video"
-    const val MESSAGE_TYPE_SYSTEM = "system"
-
-    // Действия обновления чата
-    const val ACTION_MEMBER_ADDED = "member_added"
-    const val ACTION_MEMBER_REMOVED = "member_removed"
-    const val ACTION_NAME_CHANGED = "name_changed"
-    const val ACTION_DESCRIPTION_CHANGED = "description_changed"
-
-    // Коды ошибок
-    const val ERROR_INVALID_TOKEN = "invalid_token"
-    const val ERROR_TOKEN_EXPIRED = "token_expired"
-    const val ERROR_UNAUTHORIZED = "unauthorized"
-    const val ERROR_INVALID_MESSAGE = "invalid_message"
-    const val ERROR_UNKNOWN_MESSAGE_TYPE = "UNKNOWN_MESSAGE_TYPE"
-    const val ERROR_SEND_MESSAGE_FAILED = "SEND_MESSAGE_FAILED"
-    const val ERROR_NOT_CHAT_MEMBER = "NOT_CHAT_MEMBER"
-    const val ERROR_SERVER_ERROR = "server_error"
-    const val ERROR_CONNECTION_LOST = "connection_lost"
 }

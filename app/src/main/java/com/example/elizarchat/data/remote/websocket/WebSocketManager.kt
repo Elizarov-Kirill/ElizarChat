@@ -16,6 +16,7 @@ import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import kotlinx.serialization.modules.subclass
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.time.Clock
 
 class WebSocketManager(
     private val context: Context,
@@ -228,13 +229,16 @@ class WebSocketManager(
     // Отправка сообщения в чат
     fun sendChatMessage(chatId: Int, content: String, replyTo: Int? = null): Boolean {
         println("📤 Отправка сообщения через WebSocket: chatId=$chatId, content='${content.take(50)}...'")
+
+        // ИСПРАВЛЕНО: Добавлены все обязательные поля
         val message = SendMessageRequest(
             chatId = chatId,
             content = content,
-            messageType = "text",
+            messageType = "text",  // Обязательное поле с дефолтным значением
             replyTo = replyTo,
-            metadata = "{}" // Всегда отправляем пустой JSON объект, не null
+            metadata = "{}"        // Обязательное поле с дефолтным значением
         )
+
         return sendMessage(message)
     }
 
@@ -298,21 +302,34 @@ class WebSocketManager(
                 }
 
                 is NewMessageEvent -> {
-                    println("📨 Получено новое сообщение через WebSocket: chatId=${message.chatId}")
+                    // ИСПРАВЛЕНИЕ: используем безопасные вызовы для получения ID
+                    val effectiveChatId = message.getEffectiveChatId()
+                    val messageObj = message.message ?: message.data
+
+                    println("📨 Получено новое сообщение через WebSocket: " +
+                            "chatId=${effectiveChatId}, " +
+                            "messageId=${messageObj?.id}, " +
+                            "senderId=${message.getEffectiveSenderId()}")
+
                     scope.launch {
                         _newMessages.emit(message)
                     }
                 }
 
                 is UserTypingEvent -> {
-                    println("⌨️ Пользователь печатает: userId=${message.userId}, chatId=${message.chatId}, isTyping=${message.isTyping}")
+                    println("⌨️ Пользователь печатает: " +
+                            "userId=${message.userId}, " +
+                            "chatId=${message.chatId}, " +
+                            "isTyping=${message.isTyping}")
                     scope.launch {
                         _typingEvents.emit(message)
                     }
                 }
 
                 is MessageSentConfirmation -> {
-                    println("✅ Подтверждение отправки сообщения: messageId=${message.messageId}")
+                    println("✅ Подтверждение отправки сообщения: " +
+                            "messageId=${message.messageId}, " +
+                            "chatId=${message.chatId}")
                     scope.launch {
                         _messageConfirmations.emit(message)
                     }
@@ -333,14 +350,16 @@ class WebSocketManager(
                 }
 
                 is ReadReceiptAck -> {
-                    println("👁️ Подтверждение прочтения: messageIds=${message.messageIds}")
+                    println("👁️ Подтверждение прочтения: " +
+                            "chatId=${message.chatId}, " +
+                            "messageIds=${message.messageIds}")
                     scope.launch {
                         _readReceipts.emit(message)
                     }
                 }
 
                 is ErrorMessage -> {
-                    println("❌ Ошибка WebSocket: code=${message.code}, message=${message.message}")
+                    println("❌ Ошибка WebSocket: code=${message.code ?: "unknown"}, message=${message.message}")
                     scope.launch {
                         _errors.emit(message)
                     }
@@ -361,14 +380,20 @@ class WebSocketManager(
                 }
 
                 is UserStatusUpdate -> {
-                    println("👤 Обновление статуса пользователя: userId=${message.userId}, isOnline=${message.isOnline}")
+                    println("👤 Обновление статуса пользователя: " +
+                            "userId=${message.userId}, " +
+                            "isOnline=${message.isOnline}, " +
+                            "status=${message.status ?: "unknown"}")
                     scope.launch {
                         _userStatusUpdates.emit(message)
                     }
                 }
 
                 is ChatUpdate -> {
-                    println("💬 Обновление чата: chatId=${message.chatId}, action=${message.action}")
+                    println("💬 Обновление чата: " +
+                            "chatId=${message.chatId}, " +
+                            "action=${message.action}, " +
+                            "data=${message.data}")
                     scope.launch {
                         _chatUpdates.emit(message)
                     }
@@ -377,6 +402,7 @@ class WebSocketManager(
         } catch (e: Exception) {
             println("💥 Ошибка обработки WebSocket сообщения: ${e.message}")
             println("📝 Сырое сообщение: ${jsonString.take(500)}...")
+            e.printStackTrace()
         }
     }
 
@@ -414,9 +440,14 @@ class WebSocketManager(
     }
 
     private fun sendPing() {
-        val json = Json { encodeDefaults = true }
-        val pingJson = json.encodeToString(PingMessage.serializer(), PingMessage())
-        webSocketClient?.sendMessage(pingJson)
+        try {
+            val message = PingMessage(timestamp = Clock.System.now().toString())
+            val jsonString = WebSocketMessageHelper.serializeIncomingMessage(message)
+            webSocketClient?.sendMessage(jsonString)
+            println("🏓 Отправлен ping")
+        } catch (e: Exception) {
+            println("❌ Ошибка отправки ping: ${e.message}")
+        }
     }
 
     // Lifecycle API

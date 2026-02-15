@@ -2,17 +2,16 @@ package com.example.elizarchat.ui.screens.main
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,14 +19,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.elizarchat.data.local.session.TokenManager
 import com.example.elizarchat.data.remote.ApiManager
-import com.example.elizarchat.di.ServiceLocator
+import com.example.elizarchat.data.remote.dto.MessageDto
+import com.example.elizarchat.data.remote.websocket.WebSocketManager
+import com.example.elizarchat.data.remote.websocket.WebSocketState
 import com.example.elizarchat.ui.viewmodels.ChatViewModel
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,48 +44,56 @@ fun ChatScreen(
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
-    // Создаем зависимости вручную
+    // Создаем зависимости
     val tokenManager = remember { TokenManager.getInstance(context) }
     val apiManager = remember { ApiManager(context) }
-    val webSocketManager = remember { ServiceLocator.getWebSocketManager(context) }
+    val webSocketManager = remember { WebSocketManager(context, tokenManager, apiManager) }
 
-    // Используем ViewModel с фабрикой
+    // Подключаем WebSocket к жизненному циклу
+    DisposableEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.addObserver(webSocketManager)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(webSocketManager)
+        }
+    }
+
+    // Создаем ViewModel с правильными параметрами
     val viewModel: ChatViewModel = viewModel(
-        factory = ChatViewModel.provideFactory(apiManager, tokenManager, webSocketManager)
+        factory = ChatViewModel.provideFactory(apiManager, webSocketManager, tokenManager, chatId)
     )
 
     val state by viewModel.state.collectAsState()
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
-    // Установка chatId при первом отображении
-    LaunchedEffect(chatId) {
-        viewModel.setChatId(chatId)
+    // Состояние для поля ввода
+    var messageText by remember { mutableStateOf("") }
+
+    // Получаем ID текущего пользователя
+    val currentUserId = remember { mutableStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        currentUserId.value = tokenManager.getUserId()?.toIntOrNull() ?: 0
     }
 
-    // Автопрокрутка при новых сообщениях
+    // Эффект для прокрутки вниз при новых сообщениях
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) {
-            coroutineScope.launch {
-                listState.animateScrollToItem(0)
+            listState.animateScrollToItem(0)
+        }
+    }
+
+    // Эффект для отметки сообщений как прочитанных
+    LaunchedEffect(state.messages) {
+        if (state.messages.isNotEmpty() && currentUserId.value > 0) {
+            val unreadMessages = state.messages.filter {
+                it.userId != currentUserId.value &&
+                        (it.readBy?.contains(currentUserId.value) != true)
             }
-        }
-    }
-
-    // Отметка как прочитанного при открытии чата
-    LaunchedEffect(state.isLoaded) {
-        if (state.isLoaded) {
-            viewModel.markAsRead()
-        }
-    }
-
-    val webSocketConnectionStatus = remember {
-        derivedStateOf {
-            when {
-                state.isConnectedToWebSocket -> "🟢 Online"
-                state.isLoading -> "🔄 Connecting..."
-                else -> "🔴 Offline"
+            if (unreadMessages.isNotEmpty()) {
+                viewModel.markMessagesAsRead(unreadMessages.map { it.id })
             }
         }
     }
@@ -87,19 +103,10 @@ fun ChatScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text(
-                            text = state.chat?.name ?: "Chat",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Text(
-                            text = webSocketConnectionStatus.value,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                        // Показываем индикаторы печатания
+                        Text(state.chatInfo?.name ?: "Загрузка...")
                         if (state.typingUsers.isNotEmpty()) {
                             Text(
-                                text = "Someone is typing...",
+                                text = "печатает...",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -108,8 +115,23 @@ fun ChatScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
                     }
+                },
+                actions = {
+                    // Статус подключения
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .clip(CircleShape)
+                            .background(
+                                when (state.connectionStatus) {
+                                    is WebSocketState.Connected -> Color.Green
+                                    is WebSocketState.Connecting -> Color.Yellow
+                                    else -> Color.Red
+                                }
+                            )
+                    )
                 }
             )
         }
@@ -120,92 +142,60 @@ fun ChatScreen(
                 .padding(paddingValues)
         ) {
             // Список сообщений
-            Box(modifier = Modifier.weight(1f)) {
-                when {
-                    state.isLoading && state.messages.isEmpty() -> {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator()
-                        }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                if (state.isLoading && state.messages.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
                     }
-
-                    state.error != null && state.messages.isEmpty() -> {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = "Error: ${state.error}",
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Button(onClick = { viewModel.refreshMessages() }) {
-                                    Text("Retry")
-                                }
+                } else if (state.error != null && state.messages.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "Ошибка: ${state.error}",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(onClick = { viewModel.loadMessages(refresh = true) }) {
+                                Text("Повторить")
                             }
                         }
                     }
-
-                    state.messages.isEmpty() && state.isLoaded -> {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.Chat,
-                                    contentDescription = "No messages",
-                                    modifier = Modifier.size(64.dp)
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text("No messages yet")
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    "Send the first message!",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                )
-                            }
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        reverseLayout = true,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(
+                            items = state.messages.reversed(),
+                            key = { it.id }
+                        ) { message ->
+                            MessageBubble(
+                                message = message,
+                                isOwnMessage = message.userId == currentUserId.value,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
-                    }
 
-                    else -> {
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier.fillMaxSize(),
-                            reverseLayout = true,
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
-                        ) {
-                            items(state.messages.reversed(), key = { it.id }) { message ->
-                                MessageBubble(
-                                    message = message,
-                                    isOwnMessage = state.currentUserId == message.senderId,
-                                    onRetrySend = {
-                                        if (message.status == "error") {
-                                            viewModel.retrySendMessage(message)
-                                        }
-                                    }
-                                )
-                            }
-
-                            item {
-                                if (state.isLoading && state.messages.isNotEmpty()) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(16.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        CircularProgressIndicator()
-                                    }
+                        item {
+                            if (state.isLoadingMore) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator()
                                 }
                             }
                         }
@@ -221,43 +211,34 @@ fun ChatScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
-                    value = state.newMessageText,
-                    onValueChange = { viewModel.updateMessageText(it) },
+                    value = messageText,
+                    onValueChange = {
+                        messageText = it
+                        viewModel.sendTypingStatus(it.isNotEmpty())
+                    },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Type a message...") },
-                    keyboardOptions = KeyboardOptions(
-                        capitalization = KeyboardCapitalization.Sentences
-                    ),
+                    placeholder = { Text("Введите сообщение...") },
                     shape = RoundedCornerShape(24.dp),
-                    singleLine = false,
-                    maxLines = 3,
-                    trailingIcon = {
-                        if (state.newMessageText.isNotEmpty()) {
-                            IconButton(
-                                onClick = { viewModel.sendMessage() },
-                                enabled = !state.isSending
-                            ) {
-                                if (state.isSending) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(20.dp),
-                                        strokeWidth = 2.dp
-                                    )
-                                } else {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.Send,
-                                        contentDescription = "Send",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    enabled = state.connectionStatus is WebSocketState.Connected
                 )
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                IconButton(onClick = { /* TODO: Attach file */ }) {
-                    Icon(Icons.Default.AttachFile, contentDescription = "Attach")
+                FloatingActionButton(
+                    onClick = {
+                        if (messageText.isNotBlank()) {
+                            viewModel.sendMessage(messageText)
+                            messageText = ""
+                        }
+                    },
+                    modifier = Modifier.size(48.dp),
+                    containerColor = if (messageText.isNotBlank() && state.connectionStatus is WebSocketState.Connected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                    }
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Отправить")
                 }
             }
         }
@@ -266,95 +247,87 @@ fun ChatScreen(
 
 @Composable
 fun MessageBubble(
-    message: com.example.elizarchat.data.remote.dto.MessageDto,
+    message: MessageDto,
     isOwnMessage: Boolean,
-    onRetrySend: () -> Unit = {}
+    modifier: Modifier = Modifier
 ) {
+    val backgroundColor = if (isOwnMessage) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.secondaryContainer
+    }
+
+    val contentColor = if (isOwnMessage) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    }
+
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = if (isOwnMessage) Arrangement.End else Arrangement.Start
+        modifier = modifier,
+        horizontalArrangement = if (isOwnMessage) {
+            Arrangement.End
+        } else {
+            Arrangement.Start
+        }
     ) {
-        Box(
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = backgroundColor,
+                contentColor = contentColor
+            ),
+            shape = RoundedCornerShape(
+                topStart = 16.dp,
+                topEnd = 16.dp,
+                bottomStart = if (isOwnMessage) 16.dp else 4.dp,
+                bottomEnd = if (isOwnMessage) 4.dp else 16.dp
+            ),
             modifier = Modifier
-                .clip(
-                    RoundedCornerShape(
-                        topStart = 16.dp,
-                        topEnd = 16.dp,
-                        bottomStart = if (isOwnMessage) 16.dp else 4.dp,
-                        bottomEnd = if (isOwnMessage) 4.dp else 16.dp
-                    )
-                )
-                .background(
-                    when {
-                        message.status == "error" -> MaterialTheme.colorScheme.errorContainer
-                        isOwnMessage -> MaterialTheme.colorScheme.primary
-                        else -> MaterialTheme.colorScheme.surfaceVariant
-                    }
-                )
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            contentAlignment = if (isOwnMessage) Alignment.CenterEnd else Alignment.CenterStart
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .widthIn(max = 280.dp)
         ) {
-            Column {
+            Column(
+                modifier = Modifier.padding(12.dp)
+            ) {
+                // Имя отправителя для групповых чатов
+                if (!isOwnMessage && message.userId != 0) {
+                    Text(
+                        text = "Пользователь ${message.userId}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = contentColor.copy(alpha = 0.7f)
+                    )
+                }
+
+                // Текст сообщения
                 Text(
                     text = message.content,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = when {
-                        message.status == "error" -> MaterialTheme.colorScheme.onErrorContainer
-                        isOwnMessage -> Color.White
-                        else -> MaterialTheme.colorScheme.onSurface
-                    }
+                    style = MaterialTheme.typography.bodyMedium
                 )
 
-                message.createdAt?.let { createdAt ->
-                    Row(
-                        modifier = Modifier.padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = formatMessageTime(createdAt),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = when {
-                                message.status == "error" -> MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
-                                isOwnMessage -> Color.White.copy(alpha = 0.8f)
-                                else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                            }
-                        )
+                // Время и статус
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Text(
+                        text = formatTime(message.createdAt),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = contentColor.copy(alpha = 0.7f)
+                    )
 
-                        if (isOwnMessage) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            message.status?.let { status ->
-                                when (status) {
-                                    "error" -> {
-                                        IconButton(
-                                            onClick = onRetrySend,
-                                            modifier = Modifier.size(12.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Refresh,
-                                                contentDescription = "Retry",
-                                                tint = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
-                                            )
-                                        }
-                                    }
-                                    else -> {
-                                        Icon(
-                                            imageVector = when (status) {
-                                                "sent" -> Icons.Default.Done
-                                                "delivered" -> Icons.Default.DoneAll
-                                                "read" -> Icons.Default.DoneAll
-                                                else -> Icons.Default.Schedule
-                                            },
-                                            contentDescription = "Status",
-                                            modifier = Modifier.size(12.dp),
-                                            tint = Color.White.copy(alpha = 0.8f)
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                    if (isOwnMessage) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = when (message.status) {
+                                "sending" -> "🕒"
+                                "sent" -> "✓"
+                                "delivered" -> "✓✓"
+                                "read" -> "👁️"
+                                else -> ""
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = contentColor.copy(alpha = 0.7f)
+                        )
                     }
                 }
             }
@@ -362,11 +335,15 @@ fun MessageBubble(
     }
 }
 
-private fun formatMessageTime(isoTime: String): String {
+private fun formatTime(timestamp: String?): String {
+    if (timestamp.isNullOrEmpty()) return ""
+
     return try {
-        // Пример: "2026-02-08T11:25:37.874Z" → "11:25"
-        isoTime.substring(11, 16)
+        val instant = Instant.parse(timestamp)
+        val formatter = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+            .withZone(ZoneId.systemDefault())
+        formatter.format(instant)
     } catch (e: Exception) {
-        isoTime.take(5)
+        ""
     }
 }

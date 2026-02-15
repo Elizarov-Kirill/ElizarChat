@@ -43,30 +43,7 @@ data class UserDto(
     val settings: String? = null
 )
 
-// ============ USER OPERATIONS ============
-@Serializable
-data class UpdateProfileRequest(
-    @SerialName("display_name")
-    val displayName: String? = null,
 
-    @SerialName("avatar_url")
-    val avatarUrl: String? = null,
-
-    @SerialName("bio")
-    val bio: String? = null,
-
-    @SerialName("status")
-    val status: String? = null
-)
-
-@Serializable
-data class ChangePasswordRequest(
-    @SerialName("currentPassword")  // ✅ ИСПРАВЛЕНО: camelCase
-    val currentPassword: String,
-
-    @SerialName("newPassword")  // ✅ ИСПРАВЛЕНО: camelCase
-    val newPassword: String
-)
 
 @Serializable
 data class UpdateSettingsRequest(
@@ -74,18 +51,6 @@ data class UpdateSettingsRequest(
     val settings: String  // JSON строка
 )
 
-// ============ LOCAL SETTINGS ============
-@Serializable
-data class UserSettings(
-    @SerialName("notifications")
-    val notifications: Boolean = true,
-
-    @SerialName("theme")
-    val theme: String = "light",
-
-    @SerialName("language")
-    val language: String = "en"
-)
 
 // ============ SEARCH ============
 @Serializable

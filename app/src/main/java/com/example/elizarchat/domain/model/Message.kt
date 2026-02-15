@@ -1,5 +1,6 @@
 package com.example.elizarchat.domain.model
 
+import kotlinx.serialization.json.JsonObject
 import java.time.Instant
 
 /**
@@ -14,7 +15,7 @@ data class Message(
     val senderId: String,              // Конвертируется из Int (переименовано из userId!)
     val content: String,
     val type: String,                  // "text", "image", "video", "file", "voice", "system"
-    val metadata: String? = null,      // JSON строка
+    val metadata: JsonObject = JsonObject(emptyMap()),
     val replyTo: String? = null,       // Конвертируется из Int? (ID сообщения)
     val status: String? = null,        // "sending", "sent", "delivered", "read"
     val createdAt: Instant,

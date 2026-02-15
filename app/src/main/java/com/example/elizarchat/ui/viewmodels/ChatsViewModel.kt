@@ -46,6 +46,8 @@ class ChatsViewModel(
                     _state.value = _state.value.copy(isLoading = true)
                 }
 
+                println("📡 Загрузка чатов, страница: ${_state.value.currentPage}")
+
                 val response = apiManager.getChats(
                     page = _state.value.currentPage,
                     limit = 20
@@ -53,33 +55,34 @@ class ChatsViewModel(
 
                 if (response.isSuccessful) {
                     val apiResponse = response.body()
-                    if (apiResponse?.success == true) {
-                        val chatsResponse = apiResponse.data
-                        if (chatsResponse != null) {
-                            val currentChats = _state.value.chats
-                            val newChats = if (refresh) {
-                                chatsResponse.chats
-                            } else {
-                                currentChats + chatsResponse.chats
-                            }
 
-                            _state.value = _state.value.copy(
-                                chats = newChats,
-                                hasMoreChats = chatsResponse.chats.size >= 20,
-                                currentPage = if (refresh) 2 else _state.value.currentPage + 1,
-                                isLoading = false,
-                                isRefreshing = false,
-                                error = null
-                            )
-                        }
-                    } else {
-                        _state.value = _state.value.copy(
-                            isLoading = false,
-                            isRefreshing = false,
-                            error = apiResponse?.error ?: "Failed to load chats"
-                        )
+                    // ИСПРАВЛЕНО: Получаем часы из поля chats
+                    val chats = apiResponse?.chats ?: emptyList()
+
+                    println("✅ Получено чатов: ${chats.size}")
+                    chats.forEach { chat ->
+                        println("   - Чат ID=${chat.id}, name=${chat.name}, type=${chat.type}")
                     }
+
+                    val currentChats = if (refresh) emptyList() else _state.value.chats
+                    val newChats = currentChats + chats
+
+                    // Проверяем, есть ли еще чаты
+                    val hasMore = chats.size >= 20
+                    val nextPage = if (refresh) 2 else _state.value.currentPage + 1
+
+                    _state.value = _state.value.copy(
+                        chats = newChats,
+                        hasMoreChats = hasMore,
+                        currentPage = nextPage,
+                        isLoading = false,
+                        isRefreshing = false,
+                        error = null
+                    )
+
+                    println("📊 Всего чатов в состоянии: ${_state.value.chats.size}")
                 } else {
+                    println("❌ HTTP ошибка: ${response.code()}")
                     _state.value = _state.value.copy(
                         isLoading = false,
                         isRefreshing = false,
@@ -87,6 +90,8 @@ class ChatsViewModel(
                     )
                 }
             } catch (e: Exception) {
+                println("❌ Исключение: ${e.message}")
+                e.printStackTrace()
                 _state.value = _state.value.copy(
                     isLoading = false,
                     isRefreshing = false,

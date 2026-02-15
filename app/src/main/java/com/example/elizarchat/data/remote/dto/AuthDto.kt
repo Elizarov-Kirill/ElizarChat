@@ -57,16 +57,3 @@ data class AuthResponse(
     @SerialName("error")
     val error: String? = null
 )
-
-// ДЛЯ ВСЕХ ОСТАЛЬНЫХ API
-
-
-// ЭТО правильная структура для tokens в AuthResponse
-@Serializable
-data class TokensDto(
-    @SerialName("accessToken")
-    val accessToken: String,
-
-    @SerialName("refreshToken")
-    val refreshToken: String
-)

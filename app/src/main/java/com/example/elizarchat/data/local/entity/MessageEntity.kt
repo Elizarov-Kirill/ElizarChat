@@ -1,8 +1,8 @@
 package com.example.elizarchat.data.local.entity
 
 import androidx.room.*
-import com.example.elizarchat.data.local.converter.InstantConverter
-import com.example.elizarchat.data.local.converter.IntListConverter
+import com.example.elizarchat.data.local.converter.*
+import kotlinx.serialization.json.JsonObject
 import java.time.Instant
 
 /**
@@ -39,56 +39,60 @@ import java.time.Instant
         Index(value = ["chat_id", "created_at"])
     ]
 )
-@TypeConverters(InstantConverter::class, IntListConverter::class)
+@TypeConverters(
+    InstantConverter::class,
+    IntListConverter::class,
+    JsonObjectConverter::class  // Добавлен конвертер для JsonObject
+)
 data class MessageEntity(
-    // ============ СЕРВЕРНЫЕ ПОЛЯ (синхронизированы с БД) ============
+    // ============ СЕРВЕРНЫЕ ПОЛЯ ============
     @PrimaryKey
     @ColumnInfo(name = "id")
-    val id: Int,  // INTEGER PRIMARY KEY
+    val id: Int,
 
     @ColumnInfo(name = "chat_id")
-    val chatId: Int,  // INTEGER REFERENCES chats(id)
+    val chatId: Int?,
 
     @ColumnInfo(name = "sender_id")
-    val senderId: Int,  // INTEGER REFERENCES users(id) - переименовано из userId!
+    val senderId: Int?,
 
     @ColumnInfo(name = "content")
-    val content: String,  // TEXT NOT NULL
+    val content: String,
 
     @ColumnInfo(name = "type")
-    val type: String,  // VARCHAR(20): 'text', 'image', 'video', 'file', 'voice', 'system'
+    val type: String,
 
     @ColumnInfo(name = "metadata")
-    val metadata: String? = null,  // JSONB
+    val metadata: JsonObject,  // Теперь будет работать с конвертером
 
     @ColumnInfo(name = "reply_to")
-    val replyTo: Int? = null,  // INTEGER REFERENCES messages(id)
+    val replyTo: Int? = null,
 
     @ColumnInfo(name = "status")
-    val status: String? = null,  // VARCHAR(20): 'sending', 'sent', 'delivered', 'read'
+    val status: String? = null,
 
     @ColumnInfo(name = "created_at")
-    val createdAt: Instant,  // TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    val createdAt: Instant,
 
     @ColumnInfo(name = "updated_at")
-    val updatedAt: Instant? = null,  // TIMESTAMP
+    val updatedAt: Instant? = null,
 
     @ColumnInfo(name = "deleted_at")
-    val deletedAt: Instant? = null,  // TIMESTAMP (мягкое удаление)
+    val deletedAt: Instant? = null,
 
     @ColumnInfo(name = "read_by")
-    val readBy: List<Int> = emptyList(),  // INTEGER[] DEFAULT '{}' (массив ID пользователей)
+    val readBy: List<Int> = emptyList(),
 
-    // ============ ЛОКАЛЬНЫЕ ПОЛЯ (только для клиента) ============
+    // ============ ЛОКАЛЬНЫЕ ПОЛЯ ============
     @ColumnInfo(name = "local_status")
-    val localStatus: String = "sending",  // sending, sent, delivered, read, error
+    val localStatus: String = "sending",
 
     @ColumnInfo(name = "is_sending")
     val isSending: Boolean = false,
 
     @ColumnInfo(name = "local_id")
-    val localId: String? = null,  // Временный ID для сообщений до синхронизации
+    val localId: String? = null,
 
     @ColumnInfo(name = "sync_status")
-    val syncStatus: String = "SYNCED"  // SYNCED, PENDING_SEND, PENDING_EDIT, PENDING_DELETE
+    val syncStatus: String = "SYNCED"
 )

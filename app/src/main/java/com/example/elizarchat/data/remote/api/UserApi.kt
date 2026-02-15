@@ -118,7 +118,7 @@ interface UserApi {
     suspend fun getOnlineUsers(
         @Query("page") page: Int = 1,
         @Query("limit") limit: Int = 50
-    ): Response<ApiResponse<OnlineUsersResponse>>
+    ): Response<OnlineUsersResponse>
 
     /**
      * GET /api/v1/users/status/{id}
@@ -127,7 +127,7 @@ interface UserApi {
     @GET("users/status/{user_id}")
     suspend fun getUserStatus(
         @Path("user_id") id: Int  // Добавлено
-    ): Response<ApiResponse<UserStatusResponse>>
+    ): Response<ApiResponse<UserStatusDto>>
 
     /**
      * GET /api/v1/users/status/batch

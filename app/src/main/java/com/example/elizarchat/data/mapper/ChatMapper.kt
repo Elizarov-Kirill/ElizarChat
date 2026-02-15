@@ -12,17 +12,15 @@ object ChatMapper {
     // === DTO → Entity ===
     fun dtoToEntity(dto: ChatDto): ChatEntity {
         return ChatEntity(
-            // СЕРВЕРНЫЕ ПОЛЯ
             id = dto.id,
             type = dto.type,
             name = dto.name,
-            avatarUrl = null, // У сервера нет avatarUrl, используем null или dto.description
+            avatarUrl = dto.avatarUrl,
+            // Безопасно обрабатываем nullable поля
             createdBy = dto.createdBy ?: 0,
             createdAt = parseInstant(dto.createdAt) ?: Instant.now(),
             updatedAt = parseInstant(dto.updatedAt),
             lastMessageAt = parseInstant(dto.lastMessageAt),
-
-            // ЛОКАЛЬНЫЕ ПОЛЯ
             isMuted = false,
             isPinned = false,
             lastSyncAt = Instant.now(),
@@ -33,7 +31,6 @@ object ChatMapper {
     // === Entity → Domain ===
     fun entityToDomain(entity: ChatEntity): Chat {
         return Chat(
-            // СЕРВЕРНЫЕ ПОЛЯ
             id = entity.id.toString(),
             type = entity.type,
             name = entity.name,
@@ -42,8 +39,6 @@ object ChatMapper {
             createdAt = entity.createdAt,
             updatedAt = entity.updatedAt,
             lastMessageAt = entity.lastMessageAt,
-
-            // ЛОКАЛЬНЫЕ ПОЛЯ
             lastMessageId = entity.lastMessageId?.toString(),
             isMuted = entity.isMuted,
             isPinned = entity.isPinned,
@@ -55,17 +50,14 @@ object ChatMapper {
     // === DTO → Domain ===
     fun dtoToDomain(dto: ChatDto): Chat {
         return Chat(
-            // СЕРВЕРНЫЕ ПОЛЯ
             id = dto.id.toString(),
             type = dto.type,
             name = dto.name,
-            avatarUrl = null, // У сервера нет avatarUrl
+            avatarUrl = dto.avatarUrl,
             createdBy = dto.createdBy?.toString() ?: "0",
             createdAt = parseInstant(dto.createdAt) ?: Instant.now(),
             updatedAt = parseInstant(dto.updatedAt),
             lastMessageAt = parseInstant(dto.lastMessageAt),
-
-            // ЛОКАЛЬНЫЕ ПОЛЯ (по умолчанию)
             isMuted = false,
             isPinned = false,
             lastSyncAt = Instant.now(),
@@ -76,7 +68,6 @@ object ChatMapper {
     // === Domain → Entity ===
     fun domainToEntity(domain: Chat): ChatEntity {
         return ChatEntity(
-            // СЕРВЕРНЫЕ ПОЛЯ
             id = domain.id.toIntOrNull() ?: 0,
             type = domain.type,
             name = domain.name,
@@ -85,8 +76,6 @@ object ChatMapper {
             createdAt = domain.createdAt,
             updatedAt = domain.updatedAt,
             lastMessageAt = domain.lastMessageAt,
-
-            // ЛОКАЛЬНЫЕ ПОЛЯ
             lastMessageId = domain.lastMessageId?.toIntOrNull(),
             isMuted = domain.isMuted,
             isPinned = domain.isPinned,

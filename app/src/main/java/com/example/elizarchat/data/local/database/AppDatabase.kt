@@ -5,9 +5,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import android.content.Context
-import com.example.elizarchat.data.local.converter.InstantConverter
-import com.example.elizarchat.data.local.converter.IntListConverter
-import com.example.elizarchat.data.local.converter.StringListConverter
+import com.example.elizarchat.data.local.converter.*
 import com.example.elizarchat.data.local.dao.ChatDao
 import com.example.elizarchat.data.local.dao.ChatMemberDao
 import com.example.elizarchat.data.local.dao.MessageDao
@@ -24,13 +22,14 @@ import com.example.elizarchat.data.local.entity.UserEntity
         MessageEntity::class,
         ChatMemberEntity::class
     ],
-    version = 2,  // Увеличили версию из-за изменений схемы
-    exportSchema = true
+    version = 2,
+    exportSchema = false
 )
 @TypeConverters(
     InstantConverter::class,
     StringListConverter::class,
-    IntListConverter::class  // Добавлен новый конвертер
+    IntListConverter::class,
+    JsonObjectConverter::class  // Добавлен новый конвертер
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
@@ -49,8 +48,8 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "elizarchat.db"
                 )
-                    .addMigrations()  // TODO: Добавить миграции для версии 2
-                    .fallbackToDestructiveMigration() // для разработки, заменить на миграции
+                    .addMigrations()
+                    .fallbackToDestructiveMigration() // для разработки
                     .build()
                 INSTANCE = instance
                 instance
