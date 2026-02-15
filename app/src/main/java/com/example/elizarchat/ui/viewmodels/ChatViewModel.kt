@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import kotlin.collections.emptyMap
 
 data class ChatState(
     val isLoading: Boolean = false,
@@ -274,7 +273,7 @@ class ChatViewModel(
                     val request = SendMessageRequest(
                         content = text,
                         type = "text",
-                        metadata = null, // ИЛИ "{}" для пустого JSON
+                        metadata = {}, // ИЛИ "{}" для пустого JSON
                         replyTo = null
                     )
 
@@ -381,7 +380,7 @@ class ChatViewModel(
                     val request = SendMessageRequest(
                         content = text,
                         type = "text",
-                        metadata = null, // ИЛИ "{}"
+                        metadata = {}, // ИЛИ "{}"
                         replyTo = null
                     )
 

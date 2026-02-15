@@ -1,3 +1,4 @@
+// 📁 data/remote/websocket/WebSocketManager.kt
 package com.example.elizarchat.data.remote.websocket
 
 import android.content.Context
@@ -10,11 +11,7 @@ import com.example.elizarchat.data.remote.ApiManager
 import com.example.elizarchat.data.remote.dto.websocket.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import kotlinx.serialization.modules.subclass
@@ -48,6 +45,8 @@ class WebSocketManager(
                     subclass(NewMessageEvent::class)
                     subclass(UserTypingEvent::class)
                     subclass(MessageSentConfirmation::class)
+                    subclass(ChatSubscribed::class)
+                    subclass(ChatUnsubscribed::class)
                     subclass(ReadReceiptAck::class)
                     subclass(PongMessage::class)
                     subclass(ErrorMessage::class)
@@ -58,13 +57,16 @@ class WebSocketManager(
             }
         }
         private const val RECONNECT_DELAY_MS = 5000L
-        private const val PING_INTERVAL_MS = 25000L
+        private const val MAX_RECONNECT_ATTEMPTS = 10
+        private const val PING_INTERVAL_MS = 20000L // 20 секунд
     }
 
     private val isConnecting = AtomicBoolean(false)
     private var webSocketClient: WebSocketClient? = null
     private var reconnectJob: Job? = null
     private var pingJob: Job? = null
+    private var reconnectAttempts = 0
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // Потоки состояний
     private val _connectionState = MutableStateFlow<WebSocketState>(WebSocketState.Disconnected)
@@ -82,6 +84,12 @@ class WebSocketManager(
 
     private val _messageConfirmations = MutableSharedFlow<MessageSentConfirmation>()
     val messageConfirmations: SharedFlow<MessageSentConfirmation> = _messageConfirmations.asSharedFlow()
+
+    private val _chatSubscribed = MutableSharedFlow<ChatSubscribed>()
+    val chatSubscribed: SharedFlow<ChatSubscribed> = _chatSubscribed.asSharedFlow()
+
+    private val _chatUnsubscribed = MutableSharedFlow<ChatUnsubscribed>()
+    val chatUnsubscribed: SharedFlow<ChatUnsubscribed> = _chatUnsubscribed.asSharedFlow()
 
     private val _readReceipts = MutableSharedFlow<ReadReceiptAck>()
     val readReceipts: SharedFlow<ReadReceiptAck> = _readReceipts.asSharedFlow()
@@ -101,6 +109,9 @@ class WebSocketManager(
     private val _systemMessages = MutableSharedFlow<SystemMessage>()
     val systemMessages: SharedFlow<SystemMessage> = _systemMessages.asSharedFlow()
 
+    private val _pongMessages = MutableSharedFlow<PongMessage>()
+    val pongMessages: SharedFlow<PongMessage> = _pongMessages.asSharedFlow()
+
     // Функция для запуска подключения
     fun connect() {
         if (isConnecting.getAndSet(true)) {
@@ -108,7 +119,12 @@ class WebSocketManager(
             return
         }
 
-        CoroutineScope(Dispatchers.IO).launch {
+        reconnectAttempts = 0
+        performConnect()
+    }
+
+    private fun performConnect() {
+        scope.launch {
             try {
                 // 1. Сначала получаем или обновляем токен
                 var token = tokenManager.getAccessToken()
@@ -146,28 +162,7 @@ class WebSocketManager(
                     token = token,
                     baseUrl = AppConstants.WS_BASE_URL,
                     onStateChanged = { state ->
-                        println("🔄 Состояние WebSocket изменилось: $state")
-                        _connectionState.value = state
-                        when (state) {
-                            is WebSocketState.Connected -> {
-                                isConnecting.set(false)
-                                startPingTask()
-                                println("✅ WebSocket успешно подключен")
-                            }
-                            is WebSocketState.Error -> {
-                                isConnecting.set(false)
-                                scheduleReconnect()
-                                println("❌ WebSocket ошибка: ${state.message}")
-                            }
-                            is WebSocketState.Disconnected -> {
-                                isConnecting.set(false)
-                                scheduleReconnect()
-                                println("🔌 WebSocket отключен")
-                            }
-                            else -> {
-                                // Для полноты when, хотя других состояний нет
-                            }
-                        }
+                        handleStateChange(state)
                     },
                     onMessageReceived = { message ->
                         handleIncomingMessage(message)
@@ -177,10 +172,33 @@ class WebSocketManager(
                 webSocketClient?.connect()
             } catch (e: Exception) {
                 println("💥 Исключение при подключении WebSocket: ${e.message}")
-                _connectionState.value = WebSocketState.Error("Connection failed: ${e.message}")
+                handleStateChange(WebSocketState.Error("Connection failed: ${e.message}"))
+            }
+        }
+    }
+
+    private fun handleStateChange(state: WebSocketState) {
+        println("🔄 Состояние WebSocket изменилось: $state")
+        _connectionState.value = state
+
+        when (state) {
+            is WebSocketState.Connected -> {
+                isConnecting.set(false)
+                reconnectAttempts = 0
+                startPingTask()
+                println("✅ WebSocket успешно подключен")
+            }
+            is WebSocketState.Error -> {
                 isConnecting.set(false)
                 scheduleReconnect()
+                println("❌ WebSocket ошибка: ${state.message}")
             }
+            is WebSocketState.Disconnected -> {
+                isConnecting.set(false)
+                scheduleReconnect()
+                println("🔌 WebSocket отключен")
+            }
+            else -> { /* Connecting */ }
         }
     }
 
@@ -192,16 +210,14 @@ class WebSocketManager(
         webSocketClient = null
         _connectionState.value = WebSocketState.Disconnected
         isConnecting.set(false)
+        reconnectAttempts = 0
     }
 
     // Отправка сообщений с правильной сериализацией
     fun sendMessage(message: WebSocketIncomingMessage): Boolean {
         return try {
-            val jsonString = json.encodeToString(
-                kotlinx.serialization.PolymorphicSerializer(WebSocketIncomingMessage::class),
-                message
-            )
-            println("📤 Отправка WebSocket: ${jsonString.take(200)}...")
+            val jsonString = WebSocketMessageHelper.serializeIncomingMessage(message)
+            println("📤 Отправка WebSocket: type=${message}, data=${jsonString.take(200)}...")
             webSocketClient?.sendMessage(jsonString) ?: false
         } catch (e: Exception) {
             println("❌ Ошибка сериализации сообщения: ${e.message}")
@@ -217,7 +233,7 @@ class WebSocketManager(
             content = content,
             messageType = "text",
             replyTo = replyTo,
-            metadata = "{}" // Пустой JSON объект
+            metadata = "{}" // Всегда отправляем пустой JSON объект, не null
         )
         return sendMessage(message)
     }
@@ -268,75 +284,92 @@ class WebSocketManager(
             }
 
             // Отправляем в общий поток
-            CoroutineScope(Dispatchers.Main).launch {
+            scope.launch {
                 _incomingMessages.emit(message)
             }
 
             // Обрабатываем конкретные типы сообщений
             when (message) {
                 is WelcomeMessage -> {
-                    println("🎉 Получено welcome сообщение")
-                    CoroutineScope(Dispatchers.Main).launch {
+                    println("🎉 Получено welcome сообщение для пользователя ${message.user?.email}")
+                    scope.launch {
                         _welcomeMessages.emit(message)
                     }
                 }
 
                 is NewMessageEvent -> {
-                    println("📨 Получено новое сообщение через WebSocket")
-                    CoroutineScope(Dispatchers.Main).launch {
+                    println("📨 Получено новое сообщение через WebSocket: chatId=${message.chatId}")
+                    scope.launch {
                         _newMessages.emit(message)
                     }
                 }
 
                 is UserTypingEvent -> {
-                    println("⌨️ Пользователь печатает: userId=${message.userId}, chatId=${message.chatId}")
-                    CoroutineScope(Dispatchers.Main).launch {
+                    println("⌨️ Пользователь печатает: userId=${message.userId}, chatId=${message.chatId}, isTyping=${message.isTyping}")
+                    scope.launch {
                         _typingEvents.emit(message)
                     }
                 }
 
                 is MessageSentConfirmation -> {
                     println("✅ Подтверждение отправки сообщения: messageId=${message.messageId}")
-                    CoroutineScope(Dispatchers.Main).launch {
+                    scope.launch {
                         _messageConfirmations.emit(message)
+                    }
+                }
+
+                is ChatSubscribed -> {
+                    println("✅ Подписка на чат подтверждена: chatId=${message.chatId}")
+                    scope.launch {
+                        _chatSubscribed.emit(message)
+                    }
+                }
+
+                is ChatUnsubscribed -> {
+                    println("✅ Отписка от чата подтверждена: chatId=${message.chatId}")
+                    scope.launch {
+                        _chatUnsubscribed.emit(message)
                     }
                 }
 
                 is ReadReceiptAck -> {
                     println("👁️ Подтверждение прочтения: messageIds=${message.messageIds}")
-                    CoroutineScope(Dispatchers.Main).launch {
+                    scope.launch {
                         _readReceipts.emit(message)
                     }
                 }
 
                 is ErrorMessage -> {
-                    println("❌ Ошибка WebSocket: ${message.message}")
-                    CoroutineScope(Dispatchers.Main).launch {
+                    println("❌ Ошибка WebSocket: code=${message.code}, message=${message.message}")
+                    scope.launch {
                         _errors.emit(message)
                     }
                 }
 
                 is PongMessage -> {
                     println("❤️ Получен pong от сервера: ${message.timestamp}")
+                    scope.launch {
+                        _pongMessages.emit(message)
+                    }
                 }
 
                 is SystemMessage -> {
                     println("ℹ️ Системное сообщение: ${message.message}")
-                    CoroutineScope(Dispatchers.Main).launch {
+                    scope.launch {
                         _systemMessages.emit(message)
                     }
                 }
 
                 is UserStatusUpdate -> {
                     println("👤 Обновление статуса пользователя: userId=${message.userId}, isOnline=${message.isOnline}")
-                    CoroutineScope(Dispatchers.Main).launch {
+                    scope.launch {
                         _userStatusUpdates.emit(message)
                     }
                 }
 
                 is ChatUpdate -> {
                     println("💬 Обновление чата: chatId=${message.chatId}, action=${message.action}")
-                    CoroutineScope(Dispatchers.Main).launch {
+                    scope.launch {
                         _chatUpdates.emit(message)
                     }
                 }
@@ -348,34 +381,45 @@ class WebSocketManager(
     }
 
     private fun scheduleReconnect() {
+        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+            println("❌ Достигнуто максимальное количество попыток переподключения ($MAX_RECONNECT_ATTEMPTS)")
+            return
+        }
+
         reconnectJob?.cancel()
-        reconnectJob = CoroutineScope(Dispatchers.IO).launch {
-            delay(RECONNECT_DELAY_MS)
+        reconnectJob = scope.launch {
+            val delayMs = RECONNECT_DELAY_MS * (1 shl reconnectAttempts).coerceAtMost(60) // Exponential backoff
+            println("🔄 Планируем переподключение через ${delayMs/1000} секунд... (попытка ${reconnectAttempts + 1})")
+
+            delay(delayMs)
 
             if (connectionState.value !is WebSocketState.Connected &&
                 connectionState.value !is WebSocketState.Connecting) {
-                println("🔄 Планируем переподключение через 5 секунд...")
-                connect()
+                reconnectAttempts++
+                performConnect()
             }
         }
     }
 
     private fun startPingTask() {
         pingJob?.cancel()
-        pingJob = CoroutineScope(Dispatchers.IO).launch {
-            // Временно отключаем автоматические ping, так как сервер сам управляет соединением
-            // и может отключать неактивные соединения
-            println("⚠️ Автоматические ping отключены (сервер сам управляет соединением)")
+        pingJob = scope.launch {
+            while (true) {
+                delay(PING_INTERVAL_MS)
+                if (connectionState.value is WebSocketState.Connected) {
+                    sendPing()
+                }
+            }
         }
     }
 
     private fun sendPing() {
-        println("❤️ Отправка ping на сервер")
-        val ping = PingMessage()
-        sendMessage(ping)
+        val json = Json { encodeDefaults = true }
+        val pingJson = json.encodeToString(PingMessage.serializer(), PingMessage())
+        webSocketClient?.sendMessage(pingJson)
     }
 
-    // Новый Lifecycle API
+    // Lifecycle API
     override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
         when (event) {
             Lifecycle.Event.ON_RESUME -> {
@@ -394,9 +438,7 @@ class WebSocketManager(
                 // Отключаем WebSocket когда приложение в фоне
                 disconnect()
             }
-            else -> {
-                // Другие события не обрабатываем
-            }
+            else -> { /* Другие события не обрабатываем */ }
         }
     }
 

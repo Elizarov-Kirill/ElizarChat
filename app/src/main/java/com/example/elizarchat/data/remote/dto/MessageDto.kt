@@ -71,7 +71,7 @@ data class SendMessageRequest(
     val type: String = "text",
 
     @SerialName("metadata")
-    val metadata: String? = null,
+    val metadata: () -> Unit = {},
 
     @SerialName("replyTo")  // ✅ ИСПРАВЛЕНО: camelCase
     val replyTo: Int? = null

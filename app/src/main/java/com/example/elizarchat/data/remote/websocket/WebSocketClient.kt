@@ -1,7 +1,7 @@
+// 📁 data/remote/websocket/WebSocketClient.kt
 package com.example.elizarchat.data.remote.websocket
 
 import android.util.Log
-import kotlinx.coroutines.*
 import okhttp3.*
 import java.util.concurrent.TimeUnit
 
@@ -17,10 +17,11 @@ class WebSocketClient(
 
     private var webSocket: WebSocket? = null
     private val okHttpClient = OkHttpClient.Builder()
-        .pingInterval(25, TimeUnit.SECONDS) // Ping каждые 25 секунд
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .pingInterval(30, TimeUnit.SECONDS) // Увеличили до 30 секунд
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS) // Увеличили read timeout
         .writeTimeout(30, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
     fun connect() {
@@ -30,6 +31,7 @@ class WebSocketClient(
 
             val request = Request.Builder()
                 .url(url)
+                .addHeader("User-Agent", "ElizaChat-Android/1.0.0")
                 .build()
 
             webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
@@ -53,9 +55,22 @@ class WebSocketClient(
                     onStateChanged(WebSocketState.Disconnected)
                 }
 
+                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                    Log.d(TAG, "🔒 WebSocket закрывается: $code $reason")
+                    webSocket.close(1000, null)
+                }
+
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     Log.e(TAG, "💥 Ошибка WebSocket: ${t.message}", t)
-                    onStateChanged(WebSocketState.Error(t.message ?: "Connection failed"))
+
+                    // Проверяем тип ошибки
+                    val errorMessage = when (t) {
+                        is java.net.SocketTimeoutException -> "Connection timeout: ${t.message}"
+                        is java.io.EOFException -> "Server closed connection unexpectedly"
+                        else -> t.message ?: "Connection failed"
+                    }
+
+                    onStateChanged(WebSocketState.Error(errorMessage))
                 }
             })
         } catch (e: Exception) {
@@ -76,9 +91,6 @@ class WebSocketClient(
             val isSent = webSocket?.send(message) ?: false
             if (isSent) {
                 Log.d(TAG, "📤 Сообщение отправлено (${message.length} chars)")
-                if (message.length > 500) {
-                    Log.d(TAG, "📤 Содержимое (первые 500): ${message.take(500)}...")
-                }
             } else {
                 Log.w(TAG, "⚠️ Не удалось отправить сообщение")
             }
