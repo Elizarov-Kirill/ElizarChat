@@ -81,7 +81,7 @@ fun ChatScreen(
     // Эффект для прокрутки вниз при новых сообщениях
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) {
-            listState.animateScrollToItem(0)
+            listState.animateScrollToItem(state.messages.size - 1)
         }
     }
 
@@ -173,11 +173,12 @@ fun ChatScreen(
                 } else {
                     LazyColumn(
                         state = listState,
-                        reverseLayout = true,
+                        reverseLayout = false,
                         modifier = Modifier.fillMaxSize()
                     ) {
+                        // ИСПРАВЛЕНИЕ: Не реверсим список, LazyColumn сам это сделает
                         items(
-                            items = state.messages.reversed(),
+                            items = state.messages,  // Убираем .reversed()
                             key = { it.id }
                         ) { message ->
                             MessageBubble(

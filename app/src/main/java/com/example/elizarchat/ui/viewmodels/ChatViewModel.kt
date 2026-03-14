@@ -26,7 +26,7 @@ data class ChatState(
     val currentPage: Int = 1,
     val chatInfo: ChatInfo? = null,
     val typingUsers: Set<Int> = emptySet(),
-    val connectionStatus: WebSocketState = WebSocketState.Disconnected  // ИСПРАВЛЕНО: WebSocketState вместо ConnectionState
+    val connectionStatus: WebSocketState = WebSocketState.Disconnected
 )
 
 data class ChatInfo(
@@ -60,8 +60,6 @@ class ChatViewModel(
         loadChatInfo()
         loadMessages()
         observeWebSocketEvents()
-
-        // Подписываемся на чат
         subscribeToChat()
     }
 
@@ -82,18 +80,12 @@ class ChatViewModel(
                     val messageObj = event.message ?: event.data
 
                     if (messageObj != null) {
-                        // Конвертируем metadata в JsonElement
+                        // Конвертируем metadata в JsonObject
                         val metadataJson = try {
-                            if (messageObj.metadata.isNullOrEmpty()) {
-                                JsonObject(emptyMap())
+                            if (messageObj.metadata is JsonObject) {
+                                messageObj.metadata as JsonObject
                             } else {
-                                // Пробуем распарсить как JSON объект
-                                try {
-                                    Json.parseToJsonElement(messageObj.metadata)
-                                } catch (e: Exception) {
-                                    // Если не получилось, используем как строку
-                                    JsonPrimitive(messageObj.metadata)
-                                }
+                                JsonObject(emptyMap())
                             }
                         } catch (e: Exception) {
                             JsonObject(emptyMap())
@@ -115,7 +107,7 @@ class ChatViewModel(
                             userId = messageObj.getEffectiveSenderId(),
                             content = messageObj.content,
                             type = messageObj.type,
-                            metadata = metadataJson as JsonObject,  // Используем JsonElement
+                            metadata = metadataJson,
                             replyTo = messageObj.replyTo,
                             status = messageObj.status ?: "sent",
                             createdAt = messageObj.getEffectiveCreatedAt(),
@@ -128,15 +120,25 @@ class ChatViewModel(
                         // Проверяем, нет ли дубликата
                         val isDuplicate = _state.value.messages.any { it.id == messageDto.id }
                         if (!isDuplicate) {
+                            // Сортируем сообщения по времени (старые вверху, новые внизу)
+                            val newMessages = (_state.value.messages + messageDto)
+                                .sortedBy { it.createdAt }
+
                             _state.value = _state.value.copy(
-                                messages = _state.value.messages + messageDto
+                                messages = newMessages
                             )
-                            println("✅ Добавлено сообщение ${messageDto.id} в состояние")
+                            println("✅ Добавлено сообщение ${messageDto.id} в состояние, всего: ${newMessages.size}")
+
+                            // Автоматически отмечаем как прочитанные, если это не наше сообщение
+                            viewModelScope.launch {
+                                val currentUserId = getCurrentUserId()
+                                if (messageDto.getEffectiveUserId() != currentUserId) {
+                                    markMessagesAsRead(listOf(messageDto.id))
+                                }
+                            }
                         } else {
                             println("⚠️ Сообщение ${messageDto.id} уже существует, пропускаем")
                         }
-                    } else {
-                        println("⚠️ Получено событие new_message без сообщения")
                     }
                 }
             }
@@ -146,18 +148,20 @@ class ChatViewModel(
         viewModelScope.launch {
             webSocketManager.typingEvents.collectLatest { event ->
                 if (event.chatId == chatId) {
-                    val currentUserId = getCurrentUserId()
-                    if (event.userId != currentUserId) {
-                        if (event.isTyping) {
-                            _state.value = _state.value.copy(
-                                typingUsers = _state.value.typingUsers + event.userId
-                            )
-                            println("⌨️ Пользователь ${event.userId} начал печатать")
-                        } else {
-                            _state.value = _state.value.copy(
-                                typingUsers = _state.value.typingUsers - event.userId
-                            )
-                            println("⌨️ Пользователь ${event.userId} закончил печатать")
+                    viewModelScope.launch {
+                        val currentUserId = getCurrentUserId()
+                        if (event.userId != currentUserId) {
+                            if (event.isTyping) {
+                                _state.value = _state.value.copy(
+                                    typingUsers = _state.value.typingUsers + event.userId
+                                )
+                                println("⌨️ Пользователь ${event.userId} начал печатать")
+                            } else {
+                                _state.value = _state.value.copy(
+                                    typingUsers = _state.value.typingUsers - event.userId
+                                )
+                                println("⌨️ Пользователь ${event.userId} закончил печатать")
+                            }
                         }
                     }
                 }
@@ -266,11 +270,14 @@ class ChatViewModel(
                     if (apiResponse?.success == true) {
                         val newMessages = apiResponse.messages ?: emptyList()
 
+                        // Сортируем по времени (старые вверху, новые внизу)
                         val allMessages = if (refresh) {
-                            newMessages
+                            newMessages.sortedBy { it.createdAt }
                         } else {
-                            _state.value.messages + newMessages
-                        }.distinctBy { it.id } // Убираем дубликаты по ID
+                            (_state.value.messages + newMessages)
+                                .distinctBy { it.id }
+                                .sortedBy { it.createdAt }
+                        }
 
                         _state.value = _state.value.copy(
                             messages = allMessages,
@@ -281,11 +288,13 @@ class ChatViewModel(
                             error = null
                         )
 
-                        println("✅ Загружено ${newMessages.size} сообщений")
+                        println("✅ Загружено ${newMessages.size} сообщений, всего: ${allMessages.size}")
 
                         // Отмечаем сообщения как прочитанные
                         if (newMessages.isNotEmpty()) {
-                            markMessagesAsRead(newMessages.map { it.id })
+                            viewModelScope.launch {
+                                markMessagesAsRead(newMessages.map { it.id })
+                            }
                         }
                     }
                 } else {
@@ -312,7 +321,6 @@ class ChatViewModel(
         }
     }
 
-    // ИСПРАВЛЕНО: Добавляем параметр replyTo в метод sendMessage
     fun sendMessage(content: String, replyTo: Int? = null) {
         viewModelScope.launch {
             try {
@@ -327,13 +335,17 @@ class ChatViewModel(
                     userId = currentUserId,
                     content = content,
                     type = "text",
-                    metadata = JsonObject(emptyMap()),  // Пустой JSON объект
+                    metadata = JsonObject(emptyMap()),
                     status = "sending",
                     createdAt = Instant.now().toString()
                 )
 
+                // Добавляем с сортировкой
+                val newMessages = (_state.value.messages + tempMessage)
+                    .sortedBy { it.createdAt }
+
                 _state.value = _state.value.copy(
-                    messages = _state.value.messages + tempMessage
+                    messages = newMessages
                 )
 
                 // Отправляем через WebSocket
@@ -355,12 +367,15 @@ class ChatViewModel(
                         val apiResponse = response.body()
                         if (apiResponse?.success == true) {
                             println("✅ Сообщение отправлено через REST API")
-                            // Обновляем временное сообщение с реальным ID
                             apiResponse.data?.let { messageDto ->
+                                // Заменяем временное сообщение на реальное
+                                val updatedMessages = _state.value.messages
+                                    .filter { it.id != tempMessage.id }
+                                    .plus(messageDto)
+                                    .sortedBy { it.createdAt }
+
                                 _state.value = _state.value.copy(
-                                    messages = _state.value.messages.map { msg ->
-                                        if (msg.id < 0) messageDto else msg
-                                    }
+                                    messages = updatedMessages
                                 )
                             }
                         } else {
@@ -404,7 +419,6 @@ class ChatViewModel(
         }
     }
 
-    // ИСПРАВЛЕНО: Добавлен метод markMessagesAsRead
     fun markMessagesAsRead(messageIds: List<Int>) {
         viewModelScope.launch {
             try {
@@ -416,7 +430,6 @@ class ChatViewModel(
         }
     }
 
-    // ИСПРАВЛЕНО: getCurrentUserId возвращает Int
     private suspend fun getCurrentUserId(): Int {
         // Получаем ID текущего пользователя из токена
         return tokenManager.getUserId()?.toIntOrNull() ?: 0

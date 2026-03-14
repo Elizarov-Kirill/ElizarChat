@@ -2,7 +2,7 @@ package com.example.elizarchat.data.remote.dto.websocket
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -16,7 +16,7 @@ sealed class WebSocketIncomingMessage
 @Serializable
 @SerialName("ping")
 data class PingMessage(
-    val timestamp: String? = null  // Добавляем опциональный параметр
+    val timestamp: String? = null
 ) : WebSocketIncomingMessage()
 
 @Serializable
@@ -31,9 +31,9 @@ data class TypingMessage(
 data class SendMessageRequest(
     val chatId: Int,
     val content: String,
-    @SerialName("messageType") val messageType: String = "text",  // Есть дефолтное значение
+    @SerialName("messageType") val messageType: String = "text",
     @SerialName("replyTo") val replyTo: Int? = null,
-    val metadata: String = "{}"  // Есть дефолтное значение
+    val metadata: String = "{}"  // Оставляем строку для отправки
 ) : WebSocketIncomingMessage()
 
 @Serializable
@@ -101,7 +101,7 @@ data class NewMessageEvent(
     fun getEffectiveSenderId(): Int = senderId ?: senderIdAlt ?: message?.getEffectiveSenderId() ?: 0
 }
 
-// Модель сообщения
+// Модель сообщения - ИСПРАВЛЕНИЕ: metadata теперь JsonElement
 @Serializable
 data class ChatMessage(
     val id: Int,
@@ -134,7 +134,8 @@ data class ChatMessage(
     @SerialName("message_type")
     val messageType: String? = null,
 
-    val metadata: String? = "{}",
+    // ИСПРАВЛЕНИЕ: Используем JsonElement вместо String
+    val metadata: JsonElement = JsonObject(emptyMap()),
 
     @SerialName("reply_to")
     val replyTo: Int? = null,
@@ -168,6 +169,24 @@ data class ChatMessage(
     fun getEffectiveChatId(): Int = chatId ?: chatIdAlt ?: 0
     fun getEffectiveSenderId(): Int = senderId ?: senderIdAlt ?: 0
     fun getEffectiveCreatedAt(): String = createdAt ?: createdAtAlt ?: ""
+
+    // Вспомогательный метод для получения metadata как строки (если нужно)
+    fun getMetadataAsString(): String {
+        return when (metadata) {
+            is JsonPrimitive -> metadata.content
+            is JsonObject -> metadata.toString()
+            else -> "{}"
+        }
+    }
+
+    // Вспомогательный метод для получения metadata как JsonObject
+    fun getMetadataAsJsonObject(): JsonObject {
+        return if (metadata is JsonObject) {
+            metadata
+        } else {
+            JsonObject(emptyMap())
+        }
+    }
 }
 
 // Подтверждение отправки
@@ -363,7 +382,16 @@ object WebSocketMessageHelper {
 
             val message = when (type) {
                 "welcome" -> json.decodeFromString(WelcomeMessage.serializer(), jsonString)
-                "new_message" -> json.decodeFromString(NewMessageEvent.serializer(), jsonString)
+                "new_message" -> {
+                    // Для new_message нужна специальная обработка из-за metadata
+                    try {
+                        json.decodeFromString(NewMessageEvent.serializer(), jsonString)
+                    } catch (e: Exception) {
+                        println("⚠️ Ошибка десериализации new_message: ${e.message}")
+                        // Пробуем ручную десериализацию
+                        manualDeserializeNewMessage(jsonString)
+                    }
+                }
                 "message_sent" -> json.decodeFromString(MessageSentConfirmation.serializer(), jsonString)
                 "chat_subscribed" -> json.decodeFromString(ChatSubscribed.serializer(), jsonString)
                 "chat_unsubscribed" -> json.decodeFromString(ChatUnsubscribed.serializer(), jsonString)
@@ -386,5 +414,68 @@ object WebSocketMessageHelper {
             println("📝 Сырое: ${jsonString.take(200)}...")
             null
         }
+    }
+
+    // Ручная десериализация для new_message
+    private fun manualDeserializeNewMessage(jsonString: String): NewMessageEvent? {
+        return try {
+            val jsonObj = json.parseToJsonElement(jsonString).jsonObject
+
+            val chatId = jsonObj["chatId"]?.jsonPrimitive?.intOrNull
+            val chatIdAlt = jsonObj["chat_id"]?.jsonPrimitive?.intOrNull
+            val senderId = jsonObj["senderId"]?.jsonPrimitive?.intOrNull
+            val senderIdAlt = jsonObj["sender_id"]?.jsonPrimitive?.intOrNull
+            val senderEmail = jsonObj["senderEmail"]?.jsonPrimitive?.content
+            val timestamp = jsonObj["timestamp"]?.jsonPrimitive?.content
+
+            val messageObj = jsonObj["message"]?.jsonObject
+            val dataObj = jsonObj["data"]?.jsonObject
+
+            val message = messageObj?.let { parseChatMessage(it) }
+            val data = dataObj?.let { parseChatMessage(it) }
+
+            NewMessageEvent(
+                chatId = chatId,
+                chatIdAlt = chatIdAlt,
+                senderId = senderId,
+                senderIdAlt = senderIdAlt,
+                senderEmail = senderEmail,
+                timestamp = timestamp,
+                message = message,
+                data = data
+            )
+        } catch (e: Exception) {
+            println("❌ Ошибка ручной десериализации new_message: ${e.message}")
+            null
+        }
+    }
+
+    // Парсинг ChatMessage с обработкой metadata как JsonElement
+    private fun parseChatMessage(obj: JsonObject): ChatMessage {
+        return ChatMessage(
+            id = obj["id"]?.jsonPrimitive?.int ?: 0,
+            chatId = obj["chatId"]?.jsonPrimitive?.intOrNull ?: obj["chat_id"]?.jsonPrimitive?.intOrNull,
+            chatIdAlt = obj["chat_id"]?.jsonPrimitive?.intOrNull ?: obj["chatId"]?.jsonPrimitive?.intOrNull,
+            senderId = obj["senderId"]?.jsonPrimitive?.intOrNull ?: obj["sender_id"]?.jsonPrimitive?.intOrNull,
+            senderIdAlt = obj["sender_id"]?.jsonPrimitive?.intOrNull ?: obj["senderId"]?.jsonPrimitive?.intOrNull,
+            senderUsername = obj["sender_username"]?.jsonPrimitive?.content,
+            senderDisplayName = obj["sender_display_name"]?.jsonPrimitive?.content,
+            senderAvatarUrl = obj["sender_avatar_url"]?.jsonPrimitive?.content,
+            content = obj["content"]?.jsonPrimitive?.content ?: "",
+            type = obj["type"]?.jsonPrimitive?.content ?: "text",
+            messageType = obj["message_type"]?.jsonPrimitive?.content,
+            // ИСПРАВЛЕНИЕ: metadata берем как JsonElement, не конвертируем в строку
+            metadata = obj["metadata"] ?: JsonObject(emptyMap()),
+            replyTo = obj["reply_to"]?.jsonPrimitive?.intOrNull,
+            status = obj["status"]?.jsonPrimitive?.content,
+            createdAt = obj["createdAt"]?.jsonPrimitive?.content ?: obj["created_at"]?.jsonPrimitive?.content,
+            createdAtAlt = obj["created_at"]?.jsonPrimitive?.content ?: obj["createdAt"]?.jsonPrimitive?.content,
+            updatedAt = obj["updatedAt"]?.jsonPrimitive?.content ?: obj["updated_at"]?.jsonPrimitive?.content,
+            updatedAtAlt = obj["updated_at"]?.jsonPrimitive?.content ?: obj["updatedAt"]?.jsonPrimitive?.content,
+            deletedAt = obj["deleted_at"]?.jsonPrimitive?.content,
+            isEdited = obj["is_edited"]?.jsonPrimitive?.boolean ?: false,
+            readBy = obj["read_by"]?.jsonArray?.mapNotNull { it.jsonPrimitive.intOrNull },
+            readCount = obj["read_count"]?.jsonPrimitive?.int ?: 0
+        )
     }
 }

@@ -147,9 +147,19 @@ class CreateChatViewModel(
 
                 if (response.isSuccessful) {
                     val apiResponse = response.body()
+
+                    // ИСПРАВЛЕНИЕ: Проверяем оба поля - и chat, и existingChat
                     val chat = apiResponse?.chat
+                    val message = apiResponse?.message
 
                     if (apiResponse?.success == true && chat != null) {
+                        // Если есть сообщение о том, что это существующий чат, логируем это
+                        if (message?.contains("существующий") == true) {
+                            println("✅ Использован существующий чат с ID: ${chat.id}")
+                        } else {
+                            println("✅ Создан новый чат с ID: ${chat.id}")
+                        }
+
                         _state.value = _state.value.copy(
                             isCreating = false,
                             createdChat = chat,
