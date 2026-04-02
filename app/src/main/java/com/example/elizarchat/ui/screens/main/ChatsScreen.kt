@@ -6,6 +6,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,7 +19,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.elizarchat.data.local.session.TokenManager
 import com.example.elizarchat.data.remote.ApiManager
+import com.example.elizarchat.domain.model.Chat
 import com.example.elizarchat.ui.viewmodels.ChatsViewModel
+import androidx.compose.runtime.collectAsState
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,11 +36,9 @@ fun ChatsScreen(
 ) {
     val context = LocalContext.current
 
-    // Создаем зависимости вручную
     val tokenManager = remember { TokenManager.getInstance(context) }
     val apiManager = remember { ApiManager(context) }
 
-    // Используем ViewModel с фабрикой
     val viewModel: ChatsViewModel = viewModel(
         factory = ChatsViewModel.provideFactory(apiManager, tokenManager)
     )
@@ -51,7 +57,7 @@ fun ChatsScreen(
                         viewModel.logout()
                         onLogout()
                     }) {
-                        Icon(Icons.Default.ExitToApp, contentDescription = "Logout")
+                        Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Logout")
                     }
                 }
             )
@@ -106,7 +112,7 @@ fun ChatsScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Icon(
-                                Icons.Default.Chat,
+                                Icons.AutoMirrored.Filled.Chat,
                                 contentDescription = "No chats",
                                 modifier = Modifier.size(64.dp)
                             )
@@ -130,7 +136,8 @@ fun ChatsScreen(
                         items(state.chats, key = { it.id }) { chat ->
                             ChatListItem(
                                 chat = chat,
-                                onClick = { onNavigateToChat(chat.id) }
+                                onClick = { onNavigateToChat(chat.id.toInt()) },
+                                currentUserId = viewModel.currentUserId.toString()
                             )
                         }
 
@@ -155,9 +162,17 @@ fun ChatsScreen(
 
 @Composable
 fun ChatListItem(
-    chat: com.example.elizarchat.data.remote.dto.ChatDto,
-    onClick: () -> Unit
+    chat: Chat,
+    onClick: () -> Unit,
+    currentUserId: String
 ) {
+    // Используем displayName из доменной модели
+    val displayName = chat.displayName(currentUserId)
+
+    // Получаем последнее сообщение
+    val lastMessage = chat.lastMessage
+    val lastMessageTime = chat.lastActivityAt
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -181,7 +196,7 @@ fun ChatListItem(
                             "private" -> Icons.Default.Person
                             "group" -> Icons.Default.Group
                             "channel" -> Icons.Default.Tag
-                            else -> Icons.Default.Chat
+                            else -> Icons.AutoMirrored.Filled.Chat
                         },
                         contentDescription = "Chat avatar",
                         modifier = Modifier.size(28.dp)
@@ -194,12 +209,14 @@ fun ChatListItem(
             Column(
                 modifier = Modifier.weight(1f)
             ) {
+                // Отображаем имя (для приватных - имя собеседника)
                 Text(
-                    text = chat.name ?: "Chat",
+                    text = displayName,
                     style = MaterialTheme.typography.titleMedium
                 )
 
-                chat.lastMessage?.let { lastMessage ->
+                // Последнее сообщение
+                if (lastMessage != null) {
                     Text(
                         text = lastMessage.content.take(50) + if (lastMessage.content.length > 50) "..." else "",
                         style = MaterialTheme.typography.bodyMedium,
@@ -208,10 +225,11 @@ fun ChatListItem(
                     )
                 }
 
+                // Информация о чате
                 Text(
                     text = when (chat.type) {
                         "private" -> "Private chat"
-                        "group" -> "Group chat • ${chat.members?.size ?: 0} members"
+                        "group" -> "Group chat • ${chat.participantCount(currentUserId)} members"
                         "channel" -> "Channel"
                         else -> chat.type
                     },
@@ -220,15 +238,61 @@ fun ChatListItem(
                 )
             }
 
-            // Непрочитанные сообщения
-            if (chat.unreadCount > 0) {
-                Badge(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ) {
-                    Text(chat.unreadCount.toString())
+            // Время последнего сообщения
+            if (lastMessageTime != null) {
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = formatTime(lastMessageTime),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Непрочитанные сообщения
+                    val unreadCount = chat.unreadCountForUser(currentUserId)
+                    if (unreadCount > 0) {
+                        Badge(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ) {
+                            Text(if (unreadCount > 99) "99+" else unreadCount.toString())
+                        }
+                    }
+                }
+            } else {
+                // Непрочитанные сообщения без времени
+                val unreadCount = chat.unreadCountForUser(currentUserId)
+                if (unreadCount > 0) {
+                    Badge(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ) {
+                        Text(if (unreadCount > 99) "99+" else unreadCount.toString())
+                    }
                 }
             }
+        }
+    }
+}
+
+private fun formatTime(instant: Instant): String {
+    val now = Instant.now()
+    val diff = java.time.Duration.between(instant, now)
+
+    return when {
+        diff.toMinutes() < 1 -> "только что"
+        diff.toHours() < 1 -> "${diff.toMinutes()} мин"
+        diff.toDays() < 1 -> {
+            val formatter = DateTimeFormatter.ofPattern("HH:mm")
+                .withZone(ZoneId.systemDefault())
+            formatter.format(instant)
+        }
+        diff.toDays() < 7 -> "${diff.toDays()} дн"
+        else -> {
+            val formatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT)
+                .withZone(ZoneId.systemDefault())
+            formatter.format(instant)
         }
     }
 }

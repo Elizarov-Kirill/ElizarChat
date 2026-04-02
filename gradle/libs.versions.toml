@@ -37,6 +37,7 @@ securityCrypto = "1.1.0"
 foundationLayout = "1.10.2"
 foundation = "1.10.2"
 media3Decoder = "1.9.2"
+foundationVersion = "1.10.6"
 
 [libraries]
 # Существующие библиотеки
@@ -98,6 +99,7 @@ retrofit-v2120 = { module = "com.squareup.retrofit2:retrofit", version.ref = "re
 androidx-compose-foundation-layout = { group = "androidx.compose.foundation", name = "foundation-layout", version.ref = "foundationLayout" }
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
 androidx-media3-decoder = { group = "androidx.media3", name = "media3-decoder", version.ref = "media3Decoder" }
+androidx-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundationVersion" }
 
 
 [plugins]

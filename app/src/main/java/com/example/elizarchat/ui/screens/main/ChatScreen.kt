@@ -10,8 +10,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,11 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.elizarchat.data.local.session.TokenManager
 import com.example.elizarchat.data.remote.ApiManager
@@ -65,6 +59,7 @@ fun ChatScreen(
     )
 
     val state by viewModel.state.collectAsState()
+    val usersCache by viewModel.usersCache.collectAsState()
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
@@ -103,10 +98,14 @@ fun ChatScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text(state.chatInfo?.name ?: "Загрузка...")
+                        // Отображаем имя чата (для приватных - имя собеседника)
+                        Text(
+                            text = state.chatInfo?.name ?: "Загрузка...",
+                            style = MaterialTheme.typography.titleMedium
+                        )
                         if (state.typingUsers.isNotEmpty()) {
                             Text(
-                                text = "печатает...",
+                                text = if (state.typingUsers.size == 1) "печатает..." else "печатают...",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -176,15 +175,15 @@ fun ChatScreen(
                         reverseLayout = false,
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        // ИСПРАВЛЕНИЕ: Не реверсим список, LazyColumn сам это сделает
                         items(
-                            items = state.messages,  // Убираем .reversed()
+                            items = state.messages,
                             key = { it.id }
                         ) { message ->
                             MessageBubble(
                                 message = message,
                                 isOwnMessage = message.userId == currentUserId.value,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                usersCache = usersCache  // 🔥 ПЕРЕДАЕМ ДЛЯ ОТОБРАЖЕНИЯ ИМЕНИ
                             )
                         }
 
@@ -250,7 +249,8 @@ fun ChatScreen(
 fun MessageBubble(
     message: MessageDto,
     isOwnMessage: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    usersCache: Map<Int, com.example.elizarchat.data.remote.dto.UserDto> = emptyMap()
 ) {
     val backgroundColor = if (isOwnMessage) {
         MaterialTheme.colorScheme.primary
@@ -263,6 +263,13 @@ fun MessageBubble(
     } else {
         MaterialTheme.colorScheme.onSecondaryContainer
     }
+
+    // Получаем имя отправителя для групповых чатов
+    val senderName = if (!isOwnMessage && message.userId != 0) {
+        usersCache[message.userId]?.displayName
+            ?: usersCache[message.userId]?.username
+            ?: "Пользователь ${message.userId}"
+    } else null
 
     Row(
         modifier = modifier,
@@ -291,9 +298,9 @@ fun MessageBubble(
                 modifier = Modifier.padding(12.dp)
             ) {
                 // Имя отправителя для групповых чатов
-                if (!isOwnMessage && message.userId != 0) {
+                if (senderName != null) {
                     Text(
-                        text = "Пользователь ${message.userId}",
+                        text = senderName,
                         style = MaterialTheme.typography.labelSmall,
                         color = contentColor.copy(alpha = 0.7f)
                     )

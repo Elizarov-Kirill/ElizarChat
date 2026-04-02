@@ -3,18 +3,23 @@ package com.example.elizarchat.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.elizarchat.data.local.RefreshManager
 import com.example.elizarchat.data.local.session.TokenManager
+import com.example.elizarchat.data.mapper.UserMapper
 import com.example.elizarchat.data.remote.ApiManager
+import com.example.elizarchat.data.remote.dto.ChatDto
 import com.example.elizarchat.data.remote.dto.MessageDto
 import com.example.elizarchat.data.remote.dto.SenderDto
+import com.example.elizarchat.data.remote.dto.UserDto
 import com.example.elizarchat.data.remote.websocket.WebSocketManager
 import com.example.elizarchat.data.remote.websocket.WebSocketState
+import com.example.elizarchat.domain.model.ChatMember
+import com.example.elizarchat.domain.model.User
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import java.time.Instant
 
 data class ChatState(
@@ -36,13 +41,6 @@ data class ChatInfo(
     val members: List<ChatMember> = emptyList()
 )
 
-data class ChatMember(
-    val userId: Int,
-    val username: String? = null,
-    val displayName: String? = null,
-    val role: String = "member"
-)
-
 class ChatViewModel(
     private val apiManager: ApiManager,
     private val webSocketManager: WebSocketManager,
@@ -53,8 +51,17 @@ class ChatViewModel(
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state.asStateFlow()
 
+    // Кэш пользователей для отображения имен
+    private val _usersCache = MutableStateFlow<Map<Int, UserDto>>(emptyMap())
+    val usersCache: StateFlow<Map<Int, UserDto>> = _usersCache.asStateFlow()
+
     private var typingJob: kotlinx.coroutines.Job? = null
-    private val TYPING_TIMEOUT = 3000L // 3 секунды
+    private val TYPING_TIMEOUT = 3000L
+
+    // ID текущего пользователя
+    private val currentUserId: Int = runBlocking {
+        tokenManager.getUserId()?.toIntOrNull() ?: 0
+    }
 
     init {
         loadChatInfo()
@@ -80,7 +87,6 @@ class ChatViewModel(
                     val messageObj = event.message ?: event.data
 
                     if (messageObj != null) {
-                        // Конвертируем metadata в JsonObject
                         val metadataJson = try {
                             if (messageObj.metadata is JsonObject) {
                                 messageObj.metadata as JsonObject
@@ -91,7 +97,6 @@ class ChatViewModel(
                             JsonObject(emptyMap())
                         }
 
-                        // Создаем SenderDto если есть информация об отправителе
                         val senderDto = if (messageObj.senderId != null || messageObj.senderUsername != null) {
                             SenderDto(
                                 id = messageObj.senderId ?: messageObj.senderIdAlt ?: 0,
@@ -117,21 +122,15 @@ class ChatViewModel(
                             sender = senderDto
                         )
 
-                        // Проверяем, нет ли дубликата
                         val isDuplicate = _state.value.messages.any { it.id == messageDto.id }
                         if (!isDuplicate) {
-                            // Сортируем сообщения по времени (старые вверху, новые внизу)
                             val newMessages = (_state.value.messages + messageDto)
                                 .sortedBy { it.createdAt }
 
-                            _state.value = _state.value.copy(
-                                messages = newMessages
-                            )
+                            _state.value = _state.value.copy(messages = newMessages)
                             println("✅ Добавлено сообщение ${messageDto.id} в состояние, всего: ${newMessages.size}")
 
-                            // Автоматически отмечаем как прочитанные, если это не наше сообщение
                             viewModelScope.launch {
-                                val currentUserId = getCurrentUserId()
                                 if (messageDto.getEffectiveUserId() != currentUserId) {
                                     markMessagesAsRead(listOf(messageDto.id))
                                 }
@@ -148,20 +147,17 @@ class ChatViewModel(
         viewModelScope.launch {
             webSocketManager.typingEvents.collectLatest { event ->
                 if (event.chatId == chatId) {
-                    viewModelScope.launch {
-                        val currentUserId = getCurrentUserId()
-                        if (event.userId != currentUserId) {
-                            if (event.isTyping) {
-                                _state.value = _state.value.copy(
-                                    typingUsers = _state.value.typingUsers + event.userId
-                                )
-                                println("⌨️ Пользователь ${event.userId} начал печатать")
-                            } else {
-                                _state.value = _state.value.copy(
-                                    typingUsers = _state.value.typingUsers - event.userId
-                                )
-                                println("⌨️ Пользователь ${event.userId} закончил печатать")
-                            }
+                    if (event.userId != currentUserId) {
+                        if (event.isTyping) {
+                            _state.value = _state.value.copy(
+                                typingUsers = _state.value.typingUsers + event.userId
+                            )
+                            println("⌨️ Пользователь ${event.userId} начал печатать")
+                        } else {
+                            _state.value = _state.value.copy(
+                                typingUsers = _state.value.typingUsers - event.userId
+                            )
+                            println("⌨️ Пользователь ${event.userId} закончил печатать")
                         }
                     }
                 }
@@ -171,9 +167,7 @@ class ChatViewModel(
         // Статус подключения
         viewModelScope.launch {
             webSocketManager.connectionState.collectLatest { state ->
-                _state.value = _state.value.copy(
-                    connectionStatus = state
-                )
+                _state.value = _state.value.copy(connectionStatus = state)
                 println("🔌 ChatViewModel: Статус подключения изменился на $state")
             }
         }
@@ -183,10 +177,10 @@ class ChatViewModel(
             webSocketManager.messageConfirmations.collectLatest { confirmation ->
                 if (confirmation.chatId == chatId) {
                     println("✅ Получено подтверждение отправки сообщения: ${confirmation.messageId}")
-                    // Обновляем статус сообщения в списке
+
                     _state.value = _state.value.copy(
                         messages = _state.value.messages.map { message ->
-                            if (message.id < 0) { // Временное сообщение
+                            if (message.id < 0) {
                                 message.copy(
                                     id = confirmation.messageId,
                                     status = "sent"
@@ -194,6 +188,13 @@ class ChatViewModel(
                             } else message
                         }
                     )
+
+                    try {
+                        RefreshManager.notifyChatsChanged()
+                        println("🔄 Список чатов обновлен (подтверждение отправки для чата $chatId)")
+                    } catch (e: Exception) {
+                        println("❌ Ошибка уведомления: ${e.message}")
+                    }
                 }
             }
         }
@@ -202,9 +203,7 @@ class ChatViewModel(
         viewModelScope.launch {
             webSocketManager.errors.collectLatest { error ->
                 println("❌ Ошибка WebSocket: ${error.message}")
-                _state.value = _state.value.copy(
-                    error = "WebSocket error: ${error.message}"
-                )
+                _state.value = _state.value.copy(error = "WebSocket error: ${error.message}")
             }
         }
     }
@@ -218,26 +217,124 @@ class ChatViewModel(
                     if (apiResponse?.success == true) {
                         val chat = apiResponse.chat
                         if (chat != null) {
+                            // Загружаем информацию об участниках для приватного чата
+                            val displayName = if (chat.type == "private") {
+                                getPrivateChatDisplayName(chat)
+                            } else {
+                                chat.name ?: "Chat"
+                            }
+
+                            // Загружаем участников
+                            val members = buildChatMembers(chat)
+
                             _state.value = _state.value.copy(
                                 chatInfo = ChatInfo(
                                     id = chat.id,
-                                    name = chat.name ?: "Chat",
+                                    name = displayName,
                                     type = chat.type,
-                                    members = chat.members?.map { member ->
-                                        ChatMember(
-                                            userId = member.userId,
-                                            role = member.role
-                                        )
-                                    } ?: emptyList()
+                                    members = members
                                 )
                             )
-                            println("✅ Информация о чате загружена: ${chat.name}")
+                            println("✅ Информация о чате загружена: $displayName (original: ${chat.name})")
+
+                            try {
+                                RefreshManager.notifyChatsChanged()
+                                println("🔄 Список чатов обновлен (загружена информация о чате $chatId)")
+                            } catch (e: Exception) {
+                                println("❌ Ошибка уведомления: ${e.message}")
+                            }
                         }
                     }
                 }
             } catch (e: Exception) {
                 println("❌ Ошибка загрузки информации о чате: ${e.message}")
             }
+        }
+    }
+
+    private suspend fun buildChatMembers(chat: ChatDto): List<ChatMember> {
+        val members = mutableListOf<ChatMember>()
+
+        chat.members?.forEach { memberDto ->
+            val user = loadUserInfoIfNeeded(memberDto.userId)
+
+            members.add(
+                ChatMember(
+                    id = memberDto.id?.toString() ?: "0",
+                    chatId = chat.id.toString(),
+                    userId = memberDto.userId.toString(),
+                    role = memberDto.role,
+                    joinedAt = java.time.Instant.now(),
+                    unreadCount = memberDto.unreadCount,
+                    lastReadMessageId = memberDto.lastReadMessageId?.toString(),
+                    notificationsEnabled = true,
+                    isHidden = false,
+                    user = user?.let { UserMapper.dtoToDomain(it) }
+                )
+            )
+        }
+
+        return members
+    }
+
+    private suspend fun getPrivateChatDisplayName(chat: ChatDto): String {
+        if (chat.type != "private") {
+            return chat.name ?: "Chat"
+        }
+
+        // 1. Пытаемся найти в members
+        val otherMember = chat.members?.find { it.userId != currentUserId }
+        if (otherMember != null) {
+            val user = loadUserInfoIfNeeded(otherMember.userId)
+            return user?.displayName ?: user?.username ?: "User ${otherMember.userId}"
+        }
+
+        // 2. Извлекаем ID собеседника из имени чата (private_1_2)
+        val otherUserId = extractOtherUserIdFromName(chat.name)
+        if (otherUserId != null && otherUserId != currentUserId) {
+            val user = loadUserInfoIfNeeded(otherUserId)
+            return user?.displayName ?: user?.username ?: "User $otherUserId"
+        }
+
+        return chat.name ?: "Chat"
+    }
+
+    private suspend fun loadUserInfoIfNeeded(userId: Int): UserDto? {
+        // Проверяем кэш
+        _usersCache.value[userId]?.let { return it }
+
+        // Загружаем из API
+        return try {
+            println("📡 Загрузка пользователя для чата: $userId")
+            val response = apiManager.getUserById(userId)
+            if (response.isSuccessful) {
+                val apiResponse = response.body()
+                val user = apiResponse?.user
+                if (user != null) {
+                    _usersCache.update { it + (userId to user) }
+                    println("✅ Загружен пользователь для чата: ${user.displayName ?: user.username} (ID=$userId)")
+                }
+                user
+            } else {
+                println("❌ Ошибка загрузки пользователя $userId: HTTP ${response.code()}")
+                null
+            }
+        } catch (e: Exception) {
+            println("❌ Ошибка загрузки пользователя $userId: ${e.message}")
+            null
+        }
+    }
+
+    private fun extractOtherUserIdFromName(chatName: String?): Int? {
+        if (chatName == null || !chatName.startsWith("private_")) return null
+        val ids = chatName.split("_")
+        if (ids.size < 3) return null
+        val id1 = ids[1].toIntOrNull()
+        val id2 = ids[2].toIntOrNull()
+        return when (currentUserId) {
+            id1 -> id2
+            id2 -> id1
+            else -> null
         }
     }
 
@@ -270,7 +367,6 @@ class ChatViewModel(
                     if (apiResponse?.success == true) {
                         val newMessages = apiResponse.messages ?: emptyList()
 
-                        // Сортируем по времени (старые вверху, новые внизу)
                         val allMessages = if (refresh) {
                             newMessages.sortedBy { it.createdAt }
                         } else {
@@ -290,7 +386,6 @@ class ChatViewModel(
 
                         println("✅ Загружено ${newMessages.size} сообщений, всего: ${allMessages.size}")
 
-                        // Отмечаем сообщения как прочитанные
                         if (newMessages.isNotEmpty()) {
                             viewModelScope.launch {
                                 markMessagesAsRead(newMessages.map { it.id })
@@ -326,9 +421,6 @@ class ChatViewModel(
             try {
                 println("📤 Отправка сообщения через WebSocket: $content")
 
-                val currentUserId = getCurrentUserId()
-
-                // Оптимистичное добавление сообщения
                 val tempMessage = MessageDto(
                     id = -System.currentTimeMillis().toInt(),
                     chatId = chatId,
@@ -340,15 +432,11 @@ class ChatViewModel(
                     createdAt = Instant.now().toString()
                 )
 
-                // Добавляем с сортировкой
                 val newMessages = (_state.value.messages + tempMessage)
                     .sortedBy { it.createdAt }
 
-                _state.value = _state.value.copy(
-                    messages = newMessages
-                )
+                _state.value = _state.value.copy(messages = newMessages)
 
-                // Отправляем через WebSocket
                 val success = webSocketManager.sendChatMessage(
                     chatId = chatId,
                     content = content,
@@ -356,7 +444,6 @@ class ChatViewModel(
                 )
 
                 if (!success) {
-                    // Используем REST API как fallback
                     val response = apiManager.sendTextMessage(
                         chatId = chatId,
                         content = content,
@@ -368,15 +455,19 @@ class ChatViewModel(
                         if (apiResponse?.success == true) {
                             println("✅ Сообщение отправлено через REST API")
                             apiResponse.data?.let { messageDto ->
-                                // Заменяем временное сообщение на реальное
                                 val updatedMessages = _state.value.messages
                                     .filter { it.id != tempMessage.id }
                                     .plus(messageDto)
                                     .sortedBy { it.createdAt }
 
-                                _state.value = _state.value.copy(
-                                    messages = updatedMessages
-                                )
+                                _state.value = _state.value.copy(messages = updatedMessages)
+
+                                try {
+                                    RefreshManager.notifyChatsChanged()
+                                    println("🔄 Список чатов обновлен (отправлено сообщение в чат $chatId)")
+                                } catch (e: Exception) {
+                                    println("❌ Ошибка уведомления: ${e.message}")
+                                }
                             }
                         } else {
                             throw Exception(apiResponse?.error ?: "Failed to send message")
@@ -384,9 +475,15 @@ class ChatViewModel(
                     } else {
                         throw Exception("HTTP ${response.code()}")
                     }
+                } else {
+                    try {
+                        RefreshManager.notifyChatsChanged()
+                        println("🔄 Список чатов обновлен (отправлено сообщение через WebSocket в чат $chatId)")
+                    } catch (e: Exception) {
+                        println("❌ Ошибка уведомления: ${e.message}")
+                    }
                 }
 
-                // Отменяем индикатор печатания
                 sendTypingStatus(false)
 
             } catch (e: Exception) {
@@ -399,20 +496,15 @@ class ChatViewModel(
     }
 
     fun sendTypingStatus(isTyping: Boolean) {
-        // Отменяем предыдущую задачу
         typingJob?.cancel()
 
         if (isTyping) {
-            // Запускаем новую задачу для отправки статуса печатания
             typingJob = viewModelScope.launch {
                 webSocketManager.sendTypingStatus(chatId, true)
-
-                // Отправляем статус "не печатает" через TYPING_TIMEOUT
                 delay(TYPING_TIMEOUT)
                 webSocketManager.sendTypingStatus(chatId, false)
             }
         } else {
-            // Немедленно отправляем статус "не печатает"
             viewModelScope.launch {
                 webSocketManager.sendTypingStatus(chatId, false)
             }
@@ -430,18 +522,12 @@ class ChatViewModel(
         }
     }
 
-    private suspend fun getCurrentUserId(): Int {
-        // Получаем ID текущего пользователя из токена
-        return tokenManager.getUserId()?.toIntOrNull() ?: 0
-    }
-
     fun clearError() {
         _state.value = _state.value.copy(error = null)
     }
 
     override fun onCleared() {
         super.onCleared()
-        // Отписываемся от чата
         viewModelScope.launch {
             webSocketManager.unsubscribeFromChat(chatId)
             println("📤 ChatViewModel: Отписались от чата $chatId")

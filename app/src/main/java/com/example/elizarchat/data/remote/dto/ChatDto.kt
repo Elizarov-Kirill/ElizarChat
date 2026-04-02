@@ -58,22 +58,22 @@ data class ChatMemberDto(
     @SerialName("id")
     val id: Int? = null,  // Может отсутствовать
 
-    @SerialName("chatId")
+    @SerialName("chat_id")
     val chatId: Int? = null,
 
-    @SerialName("userId")
+    @SerialName("user_id")
     val userId: Int,
 
     @SerialName("role")
     val role: String = "member",  // Значение по умолчанию
 
-    @SerialName("joinedAt")
+    @SerialName("joined_at")
     val joinedAt: String? = null,
 
-    @SerialName("unreadCount")
+    @SerialName("unread_count")
     val unreadCount: Int = 0,
 
-    @SerialName("lastReadMessageId")
+    @SerialName("last_read_message_id")
     val lastReadMessageId: Int? = null
 )
 

@@ -69,6 +69,7 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.media3.decoder)
+    implementation(libs.androidx.foundation)
     ksp(libs.androidx.room.compiler)// KSP вместо kapt
 
     // Retrofit с Kotlin Serialization Converter

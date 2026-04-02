@@ -3,6 +3,7 @@ package com.example.elizarchat.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.elizarchat.data.local.RefreshManager
 import com.example.elizarchat.data.local.session.TokenManager
 import com.example.elizarchat.data.remote.ApiManager
 import com.example.elizarchat.data.remote.dto.CreateChatRequest
@@ -126,15 +127,29 @@ class CreateChatViewModel(
 
                 val userIds = selectedIds
 
-                val chatName = if (_state.value.chatName.isNotBlank()) {
-                    _state.value.chatName
-                } else if (_state.value.selectedUsers.size == 1) {
-                    val otherUser = _state.value.selectedUsers.first()
-                    "Chat with ${otherUser.displayName ?: otherUser.username ?: "User"}"
-                } else {
-                    "Group Chat"
+                // 🔥 НОВАЯ ЛОГИКА ФОРМИРОВАНИЯ ИМЕНИ
+                val chatName = when {
+                    // 1. Если пользователь ввел имя (через диалог) — используем его
+                    _state.value.chatName.isNotBlank() -> {
+                        _state.value.chatName
+                    }
+                    // 2. Приватный чат (1 пользователь) — формат private_ID1_ID2
+                    _state.value.selectedUsers.size == 1 -> {
+                        val currentUserId = tokenManager.getUserId()?.toIntOrNull() ?: 0
+                        val otherUser = _state.value.selectedUsers.first()
+                        val otherUserId = otherUser.id
+
+                        // Сортируем ID, чтобы имя было одинаковым для обоих участников
+                        val sortedIds = listOf(currentUserId, otherUserId).sorted()
+                        "private_${sortedIds[0]}_${sortedIds[1]}"
+                    }
+                    // 3. Групповой чат без имени
+                    else -> {
+                        "Group Chat"
+                    }
                 }
 
+                // Определяем тип чата
                 val chatType = if (_state.value.selectedUsers.size == 1) "private" else "group"
 
                 val request = CreateChatRequest(
@@ -147,19 +162,10 @@ class CreateChatViewModel(
 
                 if (response.isSuccessful) {
                     val apiResponse = response.body()
-
-                    // ИСПРАВЛЕНИЕ: Проверяем оба поля - и chat, и existingChat
                     val chat = apiResponse?.chat
-                    val message = apiResponse?.message
 
                     if (apiResponse?.success == true && chat != null) {
-                        // Если есть сообщение о том, что это существующий чат, логируем это
-                        if (message?.contains("существующий") == true) {
-                            println("✅ Использован существующий чат с ID: ${chat.id}")
-                        } else {
-                            println("✅ Создан новый чат с ID: ${chat.id}")
-                        }
-
+                        RefreshManager.notifyChatsChanged()
                         _state.value = _state.value.copy(
                             isCreating = false,
                             createdChat = chat,
@@ -172,10 +178,9 @@ class CreateChatViewModel(
                         )
                     }
                 } else {
-                    val errorBody = response.errorBody()?.string()
                     _state.value = _state.value.copy(
                         isCreating = false,
-                        error = "HTTP ${response.code()}: $errorBody"
+                        error = "HTTP ${response.code()}"
                     )
                 }
             } catch (e: Exception) {

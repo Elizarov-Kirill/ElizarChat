@@ -1,22 +1,21 @@
-// 📁 ui/screens/auth/RegisterScreen.kt - ИСПРАВЛЕННЫЙ
 package com.example.elizarchat.ui.screens.auth
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.elizarchat.data.local.session.TokenManager
-import com.example.elizarchat.data.remote.ApiManager
-import com.example.elizarchat.data.remote.websocket.WebSocketManager
 import com.example.elizarchat.di.ServiceLocator
 import com.example.elizarchat.ui.viewmodels.AuthViewModel
 
@@ -26,13 +25,12 @@ fun RegisterScreen(
     onRegisterSuccess: () -> Unit
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
 
-    // Создаем зависимости через ServiceLocator
     val tokenManager = remember { ServiceLocator.getTokenManager(context) }
     val apiManager = remember { ServiceLocator.getApiManager(context) }
     val webSocketManager = remember { ServiceLocator.getWebSocketManager(context) }
 
-    // Создаем локальную фабрику ViewModel
     val viewModel: AuthViewModel = viewModel(
         factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
@@ -55,18 +53,25 @@ fun RegisterScreen(
         }
     }
 
+    // Получаем высоту клавиатуры
+    val imeInsets = WindowInsets.ime
+    val imeBottomPadding = with(density) { imeInsets.getBottom(density).dp }
+
     Scaffold { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 24.dp),
-            verticalArrangement = Arrangement.Center,
+                .verticalScroll(rememberScrollState()) // ← Ключевое решение
+                .imePadding(), // ← Учитываем клавиатуру
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Spacer(modifier = Modifier.height(32.dp))
+
             Text(
                 text = "Регистрация",
                 style = MaterialTheme.typography.headlineMedium,
+                fontSize = 28.sp,
                 modifier = Modifier.padding(bottom = 32.dp)
             )
 
@@ -86,7 +91,7 @@ fun RegisterScreen(
                 value = state.email,
                 onValueChange = { viewModel.updateEmail(it) },
                 label = { Text("Email") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Email),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -99,14 +104,14 @@ fun RegisterScreen(
                 onValueChange = { viewModel.updatePassword(it) },
                 label = { Text("Пароль") },
                 visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Поле отображаемого имени (опционально)
+            // Поле отображаемого имени
             OutlinedTextField(
                 value = state.displayName,
                 onValueChange = { viewModel.updateDisplayName(it) },
@@ -155,6 +160,9 @@ fun RegisterScreen(
             ) {
                 Text("Уже есть аккаунт? Войти")
             }
+
+            // Дополнительный отступ для клавиатуры
+            Spacer(modifier = Modifier.height(imeBottomPadding))
         }
     }
 }

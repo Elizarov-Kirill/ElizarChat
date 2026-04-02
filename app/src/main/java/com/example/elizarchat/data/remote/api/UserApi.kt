@@ -67,9 +67,9 @@ interface UserApi {
      * GET /api/v1/users/{id}
      * Профиль пользователя по ID
      */
-    @GET("users/{user_id}")
+    @GET("users/{id}")
     suspend fun getUserById(
-        @Path("user_id") id: Int  // Изменено: String → Int, snake_case
+        @Path("id") id: Int
     ): Response<ApiResponse<UserDto>>
 
     /**

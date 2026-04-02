@@ -20,6 +20,8 @@
 
     <activity
         android:name=".MainActivity"
+        android:windowSoftInputMode="adjustResize"
+        android:configChanges="screenLayout|screenSize|orientation|keyboardHidden"
         android:exported="true"
         android:label="@string/app_name"
         android:theme="@style/Theme.ElizarChat">

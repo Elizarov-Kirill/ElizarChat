@@ -6,6 +6,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import com.example.elizarchat.AppConstants
+import com.example.elizarchat.data.local.RefreshManager
 import com.example.elizarchat.data.local.session.TokenManager
 import com.example.elizarchat.data.remote.ApiManager
 import com.example.elizarchat.data.remote.dto.websocket.*
@@ -278,130 +279,95 @@ class WebSocketManager(
     // Обработка входящих сообщений
     private fun handleIncomingMessage(jsonString: String) {
         try {
-            // Используем наш helper для определения типа и десериализации
             val message = WebSocketMessageHelper.deserializeOutgoingMessage(jsonString)
 
             if (message == null) {
                 println("⚠️ Не удалось десериализовать сообщение")
-                println("📝 Сырое сообщение: ${jsonString.take(500)}...")
                 return
             }
 
-            // Отправляем в общий поток
-            scope.launch {
-                _incomingMessages.emit(message)
-            }
-
-            // Обрабатываем конкретные типы сообщений
             when (message) {
                 is WelcomeMessage -> {
-                    println("🎉 Получено welcome сообщение для пользователя ${message.user?.email}")
-                    scope.launch {
-                        _welcomeMessages.emit(message)
-                    }
+                    println("🎉 Получено welcome сообщение")
+                    scope.launch { _welcomeMessages.emit(message) }
                 }
 
                 is NewMessageEvent -> {
-                    // ИСПРАВЛЕНИЕ: используем безопасные вызовы для получения ID
                     val effectiveChatId = message.getEffectiveChatId()
-                    val messageObj = message.message ?: message.data
-
-                    println("📨 Получено новое сообщение через WebSocket: " +
-                            "chatId=${effectiveChatId}, " +
-                            "messageId=${messageObj?.id}, " +
-                            "senderId=${message.getEffectiveSenderId()}")
+                    println("📨 Получено новое сообщение в чате $effectiveChatId")
 
                     scope.launch {
                         _newMessages.emit(message)
+                        RefreshManager.notifyChatsChanged()
+                        println("🔄 Список чатов обновлен (новое сообщение)")
                     }
                 }
 
                 is UserTypingEvent -> {
-                    println("⌨️ Пользователь печатает: " +
-                            "userId=${message.userId}, " +
-                            "chatId=${message.chatId}, " +
-                            "isTyping=${message.isTyping}")
-                    scope.launch {
-                        _typingEvents.emit(message)
-                    }
+                    println("⌨️ Пользователь печатает")
+                    scope.launch { _typingEvents.emit(message) }
                 }
 
                 is MessageSentConfirmation -> {
-                    println("✅ Подтверждение отправки сообщения: " +
-                            "messageId=${message.messageId}, " +
-                            "chatId=${message.chatId}")
-                    scope.launch {
-                        _messageConfirmations.emit(message)
-                    }
+                    println("✅ Подтверждение отправки")
+                    scope.launch { _messageConfirmations.emit(message) }
                 }
 
                 is ChatSubscribed -> {
-                    println("✅ Подписка на чат подтверждена: chatId=${message.chatId}")
-                    scope.launch {
-                        _chatSubscribed.emit(message)
-                    }
+                    println("✅ Подписка на чат: ${message.chatId}")
+                    scope.launch { _chatSubscribed.emit(message) }
                 }
 
                 is ChatUnsubscribed -> {
-                    println("✅ Отписка от чата подтверждена: chatId=${message.chatId}")
-                    scope.launch {
-                        _chatUnsubscribed.emit(message)
-                    }
+                    println("✅ Отписка от чата: ${message.chatId}")
+                    scope.launch { _chatUnsubscribed.emit(message) }
                 }
 
                 is ReadReceiptAck -> {
-                    println("👁️ Подтверждение прочтения: " +
-                            "chatId=${message.chatId}, " +
-                            "messageIds=${message.messageIds}")
-                    scope.launch {
-                        _readReceipts.emit(message)
-                    }
+                    println("👁️ Подтверждение прочтения")
+                    scope.launch { _readReceipts.emit(message) }
                 }
 
                 is ErrorMessage -> {
-                    println("❌ Ошибка WebSocket: code=${message.code ?: "unknown"}, message=${message.message}")
-                    scope.launch {
-                        _errors.emit(message)
-                    }
+                    println("❌ Ошибка: ${message.message}")
+                    scope.launch { _errors.emit(message) }
                 }
 
                 is PongMessage -> {
-                    println("❤️ Получен pong от сервера: ${message.timestamp}")
-                    scope.launch {
-                        _pongMessages.emit(message)
-                    }
+                    println("❤️ Получен pong")
+                    scope.launch { _pongMessages.emit(message) }
                 }
 
                 is SystemMessage -> {
                     println("ℹ️ Системное сообщение: ${message.message}")
-                    scope.launch {
-                        _systemMessages.emit(message)
-                    }
+                    scope.launch { _systemMessages.emit(message) }
                 }
 
                 is UserStatusUpdate -> {
-                    println("👤 Обновление статуса пользователя: " +
-                            "userId=${message.userId}, " +
-                            "isOnline=${message.isOnline}, " +
-                            "status=${message.status ?: "unknown"}")
-                    scope.launch {
-                        _userStatusUpdates.emit(message)
-                    }
+                    println("👤 Статус пользователя: ${message.userId}")
+                    scope.launch { _userStatusUpdates.emit(message) }
                 }
 
                 is ChatUpdate -> {
-                    println("💬 Обновление чата: " +
-                            "chatId=${message.chatId}, " +
-                            "action=${message.action}, " +
-                            "data=${message.data}")
+                    println("💬 Обновление чата: chatId=${message.chatId}, action=${message.action}")
+
+                    // 🔥 ВЕСЬ КОД ВНУТРИ ОДНОЙ КОРУТИНЫ
                     scope.launch {
                         _chatUpdates.emit(message)
+
+                        if (message.action == "update" || message.action == "delete") {
+                            try {
+                                RefreshManager.notifyChatsChanged()
+                                println("🔄 Список чатов обновлен (ChatUpdate: ${message.action})")
+                            } catch (e: Exception) {
+                                println("❌ Ошибка уведомления: ${e.message}")
+                            }
+                        }
                     }
                 }
             }
         } catch (e: Exception) {
-            println("💥 Ошибка обработки WebSocket сообщения: ${e.message}")
-            println("📝 Сырое сообщение: ${jsonString.take(500)}...")
+            println("💥 Ошибка обработки сообщения: ${e.message}")
             e.printStackTrace()
         }
     }
