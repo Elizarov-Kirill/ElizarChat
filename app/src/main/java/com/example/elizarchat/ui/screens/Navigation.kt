@@ -11,7 +11,7 @@ import com.example.elizarchat.ui.screens.auth.LoginScreen
 import com.example.elizarchat.ui.screens.auth.RegisterScreen
 import com.example.elizarchat.ui.screens.main.ChatScreen
 import com.example.elizarchat.ui.screens.main.ChatsScreen
-import com.example.elizarchat.ui.screens.main.CreateChatScreen
+import com.example.elizarchat.ui.screens.main.NewChatScreen
 
 @Composable
 fun ElizarNavigation() {
@@ -59,13 +59,13 @@ fun ElizarNavigation() {
         composable("chats") {
             println("📍 DEBUG Navigation: Переход на экран chats")
             ChatsScreen(
-                onNavigateToChat = { chatId: Int ->  // Явно указываем тип!
+                onNavigateToChat = { chatId: Int ->
                     println("💬 DEBUG Navigation: Переход к чату $chatId")
                     navController.navigate("chat/$chatId")
                 },
                 onNavigateToNewChat = {
                     println("➕ DEBUG Navigation: Создание нового чата")
-                    navController.navigate("createChat")
+                    navController.navigate("newChat")
                 },
                 onLogout = {
                     println("🚪 DEBUG Navigation: Выход из чатов")
@@ -76,10 +76,10 @@ fun ElizarNavigation() {
             )
         }
 
-        composable("createChat") {
-            println("➕ DEBUG Navigation: Экран создания чата")
-            CreateChatScreen(
-                onNavigateToChat = { chatId: Int ->  // Явно указываем тип!
+        composable("newChat") {
+            println("➕ DEBUG Navigation: Экран создания нового чата")
+            NewChatScreen(
+                onNavigateToChat = { chatId: Int ->
                     println("💬 DEBUG Navigation: Чат создан, переход к чату $chatId")
                     navController.navigate("chat/$chatId") {
                         popUpTo("chats") { inclusive = false }

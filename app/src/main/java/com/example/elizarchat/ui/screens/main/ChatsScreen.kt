@@ -1,10 +1,12 @@
 package com.example.elizarchat.ui.screens.main
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
@@ -19,7 +21,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.elizarchat.data.local.session.TokenManager
 import com.example.elizarchat.data.remote.ApiManager
+import com.example.elizarchat.data.remote.dto.UserDto
 import com.example.elizarchat.domain.model.Chat
+import com.example.elizarchat.ui.viewmodels.ChatsState
 import com.example.elizarchat.ui.viewmodels.ChatsViewModel
 import androidx.compose.runtime.collectAsState
 import java.time.Instant
@@ -35,7 +39,6 @@ fun ChatsScreen(
     onLogout: () -> Unit
 ) {
     val context = LocalContext.current
-
     val tokenManager = remember { TokenManager.getInstance(context) }
     val apiManager = remember { ApiManager(context) }
 
@@ -92,12 +95,12 @@ fun ChatsScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                text = "Error: ${state.error}",
+                                text = "Ошибка: ${state.error}",
                                 color = MaterialTheme.colorScheme.error
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Button(onClick = { viewModel.refreshChats() }) {
-                                Text("Retry")
+                                Text("Повторить")
                             }
                         }
                     }
@@ -113,14 +116,14 @@ fun ChatsScreen(
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Chat,
-                                contentDescription = "No chats",
+                                contentDescription = "Нет чатов",
                                 modifier = Modifier.size(64.dp)
                             )
                             Spacer(modifier = Modifier.height(16.dp))
-                            Text("No chats yet")
+                            Text("Нет чатов")
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                "Create your first chat!",
+                                "Нажмите + чтобы начать общение!",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                             )
@@ -166,10 +169,7 @@ fun ChatListItem(
     onClick: () -> Unit,
     currentUserId: String
 ) {
-    // Используем displayName из доменной модели
     val displayName = chat.displayName(currentUserId)
-
-    // Получаем последнее сообщение
     val lastMessage = chat.lastMessage
     val lastMessageTime = chat.lastActivityAt
 
@@ -183,7 +183,6 @@ fun ChatListItem(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Аватар чата
             Surface(
                 modifier = Modifier
                     .size(56.dp)
@@ -198,7 +197,7 @@ fun ChatListItem(
                             "channel" -> Icons.Default.Tag
                             else -> Icons.AutoMirrored.Filled.Chat
                         },
-                        contentDescription = "Chat avatar",
+                        contentDescription = "Аватар чата",
                         modifier = Modifier.size(28.dp)
                     )
                 }
@@ -209,13 +208,11 @@ fun ChatListItem(
             Column(
                 modifier = Modifier.weight(1f)
             ) {
-                // Отображаем имя (для приватных - имя собеседника)
                 Text(
                     text = displayName,
                     style = MaterialTheme.typography.titleMedium
                 )
 
-                // Последнее сообщение
                 if (lastMessage != null) {
                     Text(
                         text = lastMessage.content.take(50) + if (lastMessage.content.length > 50) "..." else "",
@@ -225,12 +222,11 @@ fun ChatListItem(
                     )
                 }
 
-                // Информация о чате
                 Text(
                     text = when (chat.type) {
-                        "private" -> "Private chat"
-                        "group" -> "Group chat • ${chat.participantCount(currentUserId)} members"
-                        "channel" -> "Channel"
+                        "private" -> "Личный чат"
+                        "group" -> "Группа • ${chat.participantCount(currentUserId)} участников"
+                        "channel" -> "Канал"
                         else -> chat.type
                     },
                     style = MaterialTheme.typography.labelSmall,
@@ -238,7 +234,6 @@ fun ChatListItem(
                 )
             }
 
-            // Время последнего сообщения
             if (lastMessageTime != null) {
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
@@ -249,7 +244,6 @@ fun ChatListItem(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // Непрочитанные сообщения
                     val unreadCount = chat.unreadCountForUser(currentUserId)
                     if (unreadCount > 0) {
                         Badge(
@@ -261,7 +255,6 @@ fun ChatListItem(
                     }
                 }
             } else {
-                // Непрочитанные сообщения без времени
                 val unreadCount = chat.unreadCountForUser(currentUserId)
                 if (unreadCount > 0) {
                     Badge(

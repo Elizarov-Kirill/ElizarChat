@@ -36,4 +36,9 @@ interface ChatApi {
     suspend fun getChatById(
         @Path("id") id: Int
     ): Response<ApiResponse<ChatDto>>
+
+    @GET("chats/private/{userId}")
+    suspend fun getPrivateChatWithUser(
+        @Path("userId") userId: Int
+    ): Response<ApiResponse<ChatDto>>
 }

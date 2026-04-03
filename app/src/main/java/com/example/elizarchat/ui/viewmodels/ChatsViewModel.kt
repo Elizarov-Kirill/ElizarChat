@@ -10,6 +10,7 @@ import com.example.elizarchat.data.mapper.ChatMapper
 import com.example.elizarchat.data.mapper.UserMapper
 import com.example.elizarchat.data.remote.ApiManager
 import com.example.elizarchat.data.remote.dto.ChatDto
+import com.example.elizarchat.data.remote.dto.CreateChatRequest
 import com.example.elizarchat.data.remote.dto.UserDto
 import com.example.elizarchat.domain.model.Chat
 import com.example.elizarchat.domain.model.ChatMember
@@ -33,6 +34,16 @@ data class ChatsState(
     val currentPage: Int = 1
 )
 
+data class UsersListState(
+    val isLoading: Boolean = false,
+    val error: String? = null,
+    val searchQuery: String = "",
+    val users: List<UserDto> = emptyList(),
+    val isSearching: Boolean = false,
+    val isCreatingChat: Boolean = false,
+    val creatingChatMessage: String = ""
+)
+
 class ChatsViewModel(
     private val apiManager: ApiManager,
     private val tokenManager: TokenManager
@@ -41,8 +52,14 @@ class ChatsViewModel(
     private val _state = MutableStateFlow(ChatsState())
     val state: StateFlow<ChatsState> = _state.asStateFlow()
 
+    private val _usersState = MutableStateFlow(UsersListState())
+    val usersState: StateFlow<UsersListState> = _usersState.asStateFlow()
+
     private val _usersCache = MutableStateFlow<Map<Int, UserDto>>(emptyMap())
     val usersCache: StateFlow<Map<Int, UserDto>> = _usersCache.asStateFlow()
+
+    private val _navigationTarget = MutableStateFlow<Int?>(null)
+    val navigationTarget: StateFlow<Int?> = _navigationTarget.asStateFlow()
 
     val currentUserId: Int = runBlocking {
         tokenManager.getUserId()?.toIntOrNull() ?: 0
@@ -104,7 +121,6 @@ class ChatsViewModel(
                     if (userIdsToLoad.isNotEmpty()) {
                         println("📡 Загрузка ${userIdsToLoad.size} пользователей...")
                         loadUsersBatch(userIdsToLoad)
-                        // Даем время на загрузку
                         kotlinx.coroutines.delay(300)
                     }
 
@@ -131,9 +147,6 @@ class ChatsViewModel(
                     }
 
                     println("📊 Всего чатов в состоянии: ${_state.value.chats.size}")
-                    _state.value.chats.forEach { chat ->
-                        println("   Чат: id=${chat.id}, type=${chat.type}, displayName=${chat.displayName(currentUserId.toString())}")
-                    }
                 } else {
                     println("❌ HTTP ошибка: ${response.code()}")
                     _state.update {
@@ -163,13 +176,11 @@ class ChatsViewModel(
 
         chats.forEach { chat ->
             if (chat.type == "private") {
-                // Пытаемся извлечь ID из названия чата (private_1_2)
                 val extractedId = extractOtherUserIdFromName(chat.name)
                 if (extractedId != null && extractedId != currentUserId) {
                     userIds.add(extractedId)
                 }
 
-                // Также проверяем members, если есть
                 chat.members?.forEach { member ->
                     if (member.userId != currentUserId) {
                         userIds.add(member.userId)
@@ -191,10 +202,8 @@ class ChatsViewModel(
     }
 
     private suspend fun loadUserInfoIfNeeded(userId: Int): UserDto? {
-        // Проверяем кэш
         _usersCache.value[userId]?.let { return it }
 
-        // Загружаем из API
         return try {
             println("📡 Загрузка пользователя $userId")
             val response = apiManager.getUserById(userId)
@@ -220,7 +229,6 @@ class ChatsViewModel(
         val participants = mutableListOf<ChatMember>()
 
         if (chatDto.type == "private") {
-            // Для приватного чата находим собеседника
             val otherUserId = findOtherUserId(chatDto)
 
             if (otherUserId != null) {
@@ -243,7 +251,6 @@ class ChatsViewModel(
                 }
             }
         } else {
-            // Для групповых чатов используем members если есть
             chatDto.members?.forEach { memberDto ->
                 val userDto = _usersCache.value[memberDto.userId]
                 if (userDto != null) {
@@ -271,13 +278,11 @@ class ChatsViewModel(
     }
 
     private fun findOtherUserId(chatDto: ChatDto): Int? {
-        // 1. Пытаемся найти в members
         val otherMember = chatDto.members?.find { it.userId != currentUserId }
         if (otherMember != null) {
             return otherMember.userId
         }
 
-        // 2. Извлекаем из имени чата (private_1_2)
         return extractOtherUserIdFromName(chatDto.name)
     }
 
@@ -306,7 +311,6 @@ class ChatsViewModel(
                     val updatedChatDto = apiResponse?.chat
 
                     if (updatedChatDto != null) {
-                        // Загружаем пользователя если нужно
                         if (updatedChatDto.type == "private") {
                             val otherUserId = findOtherUserId(updatedChatDto)
                             if (otherUserId != null) {
@@ -330,6 +334,253 @@ class ChatsViewModel(
             }
         }
     }
+
+    // ============ ПОИСК ПОЛЬЗОВАТЕЛЕЙ ============
+
+    fun updateUserSearchQuery(query: String) {
+        _usersState.update { it.copy(searchQuery = query) }
+        if (query.length >= 2) {
+            searchUsers()
+        } else {
+            _usersState.update { it.copy(users = emptyList()) }
+        }
+    }
+
+    private fun searchUsers() {
+        val query = _usersState.value.searchQuery
+        if (query.length < 2) return
+
+        viewModelScope.launch {
+            try {
+                _usersState.update { it.copy(isSearching = true, error = null) }
+
+                val response = apiManager.searchUsers(query = query)
+
+                if (response.isSuccessful) {
+                    val usersResponse = response.body()
+                    val users = usersResponse?.users ?: emptyList()
+                    val filteredUsers = users.filter { it.id != currentUserId }
+                    _usersState.update {
+                        it.copy(
+                            users = filteredUsers,
+                            isSearching = false
+                        )
+                    }
+                } else {
+                    _usersState.update {
+                        it.copy(
+                            error = "HTTP ${response.code()}: ${response.message()}",
+                            isSearching = false
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _usersState.update {
+                    it.copy(
+                        error = "Network error: ${e.message}",
+                        isSearching = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearUsersError() {
+        _usersState.update { it.copy(error = null) }
+    }
+
+    fun clearNavigationTarget() {
+        _navigationTarget.value = null
+    }
+
+    // ============ СОЗДАНИЕ ПРИВАТНОГО ЧАТА ============
+
+    fun startPrivateChat(userId: Int) {
+        viewModelScope.launch {
+            try {
+                _usersState.update {
+                    it.copy(
+                        isCreatingChat = true,
+                        creatingChatMessage = "Поиск или создание чата..."
+                    )
+                }
+
+                // Шаг 1: Пытаемся найти существующий приватный чат
+                val existingChatId = findExistingPrivateChat(userId)
+
+                if (existingChatId != null) {
+                    // Чат существует - переходим в него
+                    println("✅ Найден существующий приватный чат: $existingChatId")
+                    _usersState.update {
+                        it.copy(
+                            isCreatingChat = false,
+                            creatingChatMessage = ""
+                        )
+                    }
+                    _navigationTarget.value = existingChatId
+                    return@launch
+                }
+
+                // Шаг 2: Чат не существует - создаем новый
+                _usersState.update {
+                    it.copy(creatingChatMessage = "Создание нового чата...")
+                }
+
+                val newChatId = createNewPrivateChat(userId)
+
+                if (newChatId != null) {
+                    println("✅ Создан новый приватный чат: $newChatId")
+                    RefreshManager.notifyChatsChanged()
+                    _usersState.update {
+                        it.copy(
+                            isCreatingChat = false,
+                            creatingChatMessage = ""
+                        )
+                    }
+                    _navigationTarget.value = newChatId
+                } else {
+                    _usersState.update {
+                        it.copy(
+                            isCreatingChat = false,
+                            creatingChatMessage = "",
+                            error = "Не удалось создать чат"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                println("❌ Ошибка: ${e.message}")
+                _usersState.update {
+                    it.copy(
+                        isCreatingChat = false,
+                        creatingChatMessage = "",
+                        error = "Ошибка: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun findExistingPrivateChat(userId: Int): Int? {
+        return try {
+            // Пытаемся получить чат через API
+            val response = apiManager.getPrivateChatWithUser(userId)
+
+            if (response.isSuccessful) {
+                val apiResponse = response.body()
+                val existingChat = apiResponse?.chat
+
+                if (existingChat != null && apiResponse.success) {
+                    return existingChat.id
+                }
+            }
+
+            // Также проверяем в локальном состоянии
+            val existingLocalChat = _state.value.chats.find { chat ->
+                chat.type == "private" && chat.participants.any { it.userId == userId.toString() }
+            }
+
+            existingLocalChat?.id?.toIntOrNull()
+        } catch (e: Exception) {
+            println("❌ Ошибка при поиске чата: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun createNewPrivateChat(userId: Int): Int? {
+        return try {
+            val sortedIds = listOf(currentUserId, userId).sorted()
+            val chatName = "private_${sortedIds[0]}_${sortedIds[1]}"
+
+            val request = CreateChatRequest(
+                type = "private",
+                name = chatName,
+                userIds = listOf(userId)
+            )
+
+            val response = apiManager.createChat(request)
+
+            if (response.isSuccessful) {
+                val apiResponse = response.body()
+                val newChat = apiResponse?.chat
+
+                if (apiResponse?.success == true && newChat != null) {
+                    return newChat.id
+                }
+            }
+
+            null
+        } catch (e: Exception) {
+            println("❌ Ошибка создания чата: ${e.message}")
+            null
+        }
+    }
+
+    // ============ СОЗДАНИЕ ГРУППОВОГО ЧАТА ============
+
+    fun createGroupChatWithUser(userId: Int, chatName: String) {
+        viewModelScope.launch {
+            try {
+                _usersState.update {
+                    it.copy(
+                        isCreatingChat = true,
+                        creatingChatMessage = "Создание группового чата..."
+                    )
+                }
+
+                val request = CreateChatRequest(
+                    type = "group",
+                    name = chatName,
+                    userIds = listOf(userId)
+                )
+
+                val response = apiManager.createChat(request)
+
+                if (response.isSuccessful) {
+                    val apiResponse = response.body()
+                    val newChat = apiResponse?.chat
+
+                    if (apiResponse?.success == true && newChat != null) {
+                        println("✅ Создан групповой чат: ${newChat.id}")
+                        RefreshManager.notifyChatsChanged()
+                        _usersState.update {
+                            it.copy(
+                                isCreatingChat = false,
+                                creatingChatMessage = ""
+                            )
+                        }
+                        _navigationTarget.value = newChat.id
+                    } else {
+                        _usersState.update {
+                            it.copy(
+                                isCreatingChat = false,
+                                creatingChatMessage = "",
+                                error = apiResponse?.error ?: "Не удалось создать групповой чат"
+                            )
+                        }
+                    }
+                } else {
+                    _usersState.update {
+                        it.copy(
+                            isCreatingChat = false,
+                            creatingChatMessage = "",
+                            error = "HTTP ${response.code()}: ${response.message()}"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                println("❌ Ошибка создания группового чата: ${e.message}")
+                _usersState.update {
+                    it.copy(
+                        isCreatingChat = false,
+                        creatingChatMessage = "",
+                        error = "Ошибка: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+
+    // ============ ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ============
 
     fun refreshChats() {
         loadChats(refresh = true)

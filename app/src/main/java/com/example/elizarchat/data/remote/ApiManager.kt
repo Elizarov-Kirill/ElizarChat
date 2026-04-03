@@ -158,6 +158,12 @@ class ApiManager(context: Context) {
     suspend fun getChatById(id: Int): Response<ApiResponse<ChatDto>> {
         return chatApi.getChatById(id)
     }
+    /**
+     * Получить приватный чат
+     */
+    suspend fun getPrivateChatWithUser(userId: Int): Response<ApiResponse<ChatDto>> {
+        return chatApi.getPrivateChatWithUser(userId)
+    }
 
     /**
      * Создать чат

@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.elizarchat.data.local.session.TokenManager
@@ -25,13 +26,14 @@ import com.example.elizarchat.data.remote.dto.MessageDto
 import com.example.elizarchat.data.remote.websocket.WebSocketManager
 import com.example.elizarchat.data.remote.websocket.WebSocketState
 import com.example.elizarchat.ui.viewmodels.ChatViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ChatScreen(
     chatId: Int,
@@ -39,13 +41,12 @@ fun ChatScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val density = LocalDensity.current
 
-    // Создаем зависимости
     val tokenManager = remember { TokenManager.getInstance(context) }
     val apiManager = remember { ApiManager(context) }
     val webSocketManager = remember { WebSocketManager(context, tokenManager, apiManager) }
 
-    // Подключаем WebSocket к жизненному циклу
     DisposableEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.addObserver(webSocketManager)
         onDispose {
@@ -53,7 +54,6 @@ fun ChatScreen(
         }
     }
 
-    // Создаем ViewModel с правильными параметрами
     val viewModel: ChatViewModel = viewModel(
         factory = ChatViewModel.provideFactory(apiManager, webSocketManager, tokenManager, chatId)
     )
@@ -63,24 +63,38 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
-    // Состояние для поля ввода
     var messageText by remember { mutableStateOf("") }
-
-    // Получаем ID текущего пользователя
     val currentUserId = remember { mutableStateOf(0) }
+
+    // Определяем, видна ли клавиатура
+    val isImeVisible = WindowInsets.isImeVisible
+    val isConnected = state.connectionStatus is WebSocketState.Connected
 
     LaunchedEffect(Unit) {
         currentUserId.value = tokenManager.getUserId()?.toIntOrNull() ?: 0
     }
 
-    // Эффект для прокрутки вниз при новых сообщениях
-    LaunchedEffect(state.messages.size) {
+    // Прокрутка к последнему сообщению
+    LaunchedEffect(state.messages.size, isImeVisible) {
         if (state.messages.isNotEmpty()) {
-            listState.animateScrollToItem(state.messages.size - 1)
+            delay(if (isImeVisible) 100 else 50)
+            coroutineScope.launch {
+                listState.animateScrollToItem(state.messages.size - 1)
+            }
         }
     }
 
-    // Эффект для отметки сообщений как прочитанных
+    // Прокрутка при первом открытии
+    LaunchedEffect(state.messages.isNotEmpty()) {
+        if (state.messages.isNotEmpty()) {
+            delay(150)
+            coroutineScope.launch {
+                listState.scrollToItem(state.messages.size - 1)
+            }
+        }
+    }
+
+    // Отметка прочитанных сообщений
     LaunchedEffect(state.messages) {
         if (state.messages.isNotEmpty() && currentUserId.value > 0) {
             val unreadMessages = state.messages.filter {
@@ -93,12 +107,13 @@ fun ChatScreen(
         }
     }
 
+
+    // НЕ обнуляем WindowInsets у Scaffold полностью, а используем кастомные
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        // Отображаем имя чата (для приватных - имя собеседника)
                         Text(
                             text = state.chatInfo?.name ?: "Загрузка...",
                             style = MaterialTheme.typography.titleMedium
@@ -118,7 +133,6 @@ fun ChatScreen(
                     }
                 },
                 actions = {
-                    // Статус подключения
                     Box(
                         modifier = Modifier
                             .size(12.dp)
@@ -132,49 +146,57 @@ fun ChatScreen(
                             )
                     )
                 }
+                // НЕ обнуляем windowInsets у TopAppBar
             )
         }
+        // НЕ обнуляем contentWindowInsets полностью
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(paddingValues) // Используем стандартные отступы от Scaffold
         ) {
             // Список сообщений
-            Box(
+            LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth()
+                    .fillMaxWidth(),
+                contentPadding = PaddingValues(vertical = 8.dp, horizontal = 8.dp)
             ) {
-                if (state.isLoading && state.messages.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator()
-                    }
-                } else if (state.error != null && state.messages.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "Ошибка: ${state.error}",
-                                color = MaterialTheme.colorScheme.error
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(onClick = { viewModel.loadMessages(refresh = true) }) {
-                                Text("Повторить")
+                when {
+                    state.isLoading && state.messages.isEmpty() -> {
+                        item {
+                            Box(
+                                modifier = Modifier.fillParentMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator()
                             }
                         }
                     }
-                } else {
-                    LazyColumn(
-                        state = listState,
-                        reverseLayout = false,
-                        modifier = Modifier.fillMaxSize()
-                    ) {
+
+                    state.error != null && state.messages.isEmpty() -> {
+                        item {
+                            Box(
+                                modifier = Modifier.fillParentMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = "Ошибка: ${state.error}",
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Button(onClick = { viewModel.loadMessages(refresh = true) }) {
+                                        Text("Повторить")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    else -> {
                         items(
                             items = state.messages,
                             key = { it.id }
@@ -183,12 +205,12 @@ fun ChatScreen(
                                 message = message,
                                 isOwnMessage = message.userId == currentUserId.value,
                                 modifier = Modifier.fillMaxWidth(),
-                                usersCache = usersCache  // 🔥 ПЕРЕДАЕМ ДЛЯ ОТОБРАЖЕНИЯ ИМЕНИ
+                                usersCache = usersCache
                             )
                         }
 
-                        item {
-                            if (state.isLoadingMore) {
+                        if (state.isLoadingMore) {
+                            item {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -203,45 +225,116 @@ fun ChatScreen(
                 }
             }
 
-            // Поле ввода сообщения
+            // Поле ввода
+            MessageInputCorrect(
+                messageText = messageText,
+                onMessageChange = { newText ->
+                    messageText = newText
+                    viewModel.sendTypingStatus(newText.isNotEmpty())
+                },
+                onSendMessage = {
+                    if (messageText.isNotBlank()) {
+                        viewModel.sendMessage(messageText)
+                        messageText = ""
+                    }
+                },
+                isConnected = isConnected,
+                isLoading = state.isLoading
+            )
+        }
+    }
+}
+
+@Composable
+fun MessageInputCorrect(
+    messageText: String,
+    onMessageChange: (String) -> Unit,
+    onSendMessage: () -> Unit,
+    isConnected: Boolean,
+    isLoading: Boolean
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        HorizontalDivider(
+            modifier = Modifier.fillMaxWidth(),
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+        )
+
+        // Используем Box с imePadding для поднятия над клавиатурой
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .imePadding()
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(8.dp),
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
                     value = messageText,
-                    onValueChange = {
-                        messageText = it
-                        viewModel.sendTypingStatus(it.isNotEmpty())
+                    onValueChange = onMessageChange,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp, max = 120.dp),
+                    placeholder = {
+                        Text(
+                            text = if (isConnected) "Введите сообщение..." else "Подключение...",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        )
                     },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Введите сообщение...") },
                     shape = RoundedCornerShape(24.dp),
-                    enabled = state.connectionStatus is WebSocketState.Connected
+                    enabled = isConnected && !isLoading,
+                    singleLine = false,
+                    maxLines = 5,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                    )
                 )
 
                 Spacer(modifier = Modifier.width(8.dp))
 
                 FloatingActionButton(
-                    onClick = {
-                        if (messageText.isNotBlank()) {
-                            viewModel.sendMessage(messageText)
-                            messageText = ""
-                        }
-                    },
+                    onClick = onSendMessage,
                     modifier = Modifier.size(48.dp),
-                    containerColor = if (messageText.isNotBlank() && state.connectionStatus is WebSocketState.Connected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                    containerColor = when {
+                        !isConnected -> MaterialTheme.colorScheme.surfaceVariant
+                        messageText.isNotBlank() -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
                     }
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Отправить")
+                    when {
+                        isLoading -> {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp,
+                                color = if (messageText.isNotBlank()) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
+                        else -> {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Send,
+                                contentDescription = "Отправить",
+                                tint = if (messageText.isNotBlank() && isConnected) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
+
     }
 }
 
@@ -264,11 +357,12 @@ fun MessageBubble(
         MaterialTheme.colorScheme.onSecondaryContainer
     }
 
-    // Получаем имя отправителя для групповых чатов
     val senderName = if (!isOwnMessage && message.userId != 0) {
         usersCache[message.userId]?.displayName
             ?: usersCache[message.userId]?.username
-            ?: "Пользователь ${message.userId}"
+            ?: if (message.sender?.displayName != null) message.sender.displayName
+            else if (message.sender?.username != null) message.sender.username
+            else null
     } else null
 
     Row(
@@ -291,28 +385,29 @@ fun MessageBubble(
                 bottomEnd = if (isOwnMessage) 4.dp else 16.dp
             ),
             modifier = Modifier
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .padding(horizontal = 4.dp, vertical = 4.dp)
                 .widthIn(max = 280.dp)
         ) {
             Column(
                 modifier = Modifier.padding(12.dp)
             ) {
-                // Имя отправителя для групповых чатов
-                if (senderName != null) {
+                if (senderName != null && !isOwnMessage) {
                     Text(
                         text = senderName,
                         style = MaterialTheme.typography.labelSmall,
-                        color = contentColor.copy(alpha = 0.7f)
+                        color = contentColor.copy(alpha = 0.7f),
+                        fontSize = MaterialTheme.typography.labelSmall.fontSize * 0.9
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
 
-                // Текст сообщения
                 Text(
                     text = message.content,
                     style = MaterialTheme.typography.bodyMedium
                 )
 
-                // Время и статус
+                Spacer(modifier = Modifier.height(4.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
@@ -320,19 +415,14 @@ fun MessageBubble(
                     Text(
                         text = formatTime(message.createdAt),
                         style = MaterialTheme.typography.labelSmall,
-                        color = contentColor.copy(alpha = 0.7f)
+                        color = contentColor.copy(alpha = 0.6f),
+                        fontSize = MaterialTheme.typography.labelSmall.fontSize * 0.85
                     )
 
                     if (isOwnMessage) {
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = when (message.status) {
-                                "sending" -> "🕒"
-                                "sent" -> "✓"
-                                "delivered" -> "✓✓"
-                                "read" -> "👁️"
-                                else -> ""
-                            },
+                            text = getMessageStatusIcon(message.status),
                             style = MaterialTheme.typography.labelSmall,
                             color = contentColor.copy(alpha = 0.7f)
                         )
@@ -343,14 +433,38 @@ fun MessageBubble(
     }
 }
 
+private fun getMessageStatusIcon(status: String?): String {
+    return when (status) {
+        "sending" -> "🕒"
+        "sent" -> "✓"
+        "delivered" -> "✓✓"
+        "read" -> "👁️"
+        else -> ""
+    }
+}
+
 private fun formatTime(timestamp: String?): String {
     if (timestamp.isNullOrEmpty()) return ""
 
     return try {
         val instant = Instant.parse(timestamp)
-        val formatter = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
-            .withZone(ZoneId.systemDefault())
-        formatter.format(instant)
+        val now = Instant.now()
+        val diff = java.time.Duration.between(instant, now)
+
+        when {
+            diff.toMinutes() < 1 -> "только что"
+            diff.toHours() < 1 -> "${diff.toMinutes()} мин"
+            diff.toDays() < 1 -> {
+                val formatter = DateTimeFormatter.ofPattern("HH:mm")
+                    .withZone(ZoneId.systemDefault())
+                formatter.format(instant)
+            }
+            else -> {
+                val formatter = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+                    .withZone(ZoneId.systemDefault())
+                formatter.format(instant)
+            }
+        }
     } catch (e: Exception) {
         ""
     }
