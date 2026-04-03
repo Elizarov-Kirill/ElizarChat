@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -41,10 +42,8 @@ fun NewChatScreen(
     val state by viewModel.state.collectAsState()
     val groupState by viewModel.groupChatState.collectAsState()
 
-    // Состояние для диалога группового чата
     var showGroupChatDialog by remember { mutableStateOf(false) }
 
-    // Обработка навигации
     LaunchedEffect(Unit) {
         viewModel.navigationTarget.collect { chatId ->
             if (chatId != null) {
@@ -250,6 +249,75 @@ fun NewChatScreen(
 }
 
 @Composable
+fun UserSearchItem(
+    user: UserDto,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape),
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = "Аватар",
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = user.username,
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                user.displayName?.let { displayName ->
+                    if (displayName != user.username) {
+                        Text(
+                            text = displayName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+
+                if (user.isOnline) {
+                    Text(
+                        text = "В сети",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            Icon(
+                Icons.AutoMirrored.Filled.Chat,
+                contentDescription = "Личный чат",
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+@Composable
 fun GroupChatDialog(
     state: GroupChatState,
     onDismiss: () -> Unit,
@@ -384,7 +452,7 @@ fun GroupChatDialog(
                 if (state.error != null) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = state.error ?: "",
+                        text = state.error,
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )

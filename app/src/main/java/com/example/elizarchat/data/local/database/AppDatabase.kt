@@ -49,7 +49,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "elizarchat.db"
                 )
                     .addMigrations()
-                    .fallbackToDestructiveMigration() // для разработки
+                    .fallbackToDestructiveMigration(false) // для разработки
                     .build()
                 INSTANCE = instance
                 instance
