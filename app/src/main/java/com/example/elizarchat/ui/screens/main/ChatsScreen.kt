@@ -26,6 +26,7 @@ import com.example.elizarchat.domain.model.Chat
 import com.example.elizarchat.ui.viewmodels.ChatsState
 import com.example.elizarchat.ui.viewmodels.ChatsViewModel
 import androidx.compose.runtime.collectAsState
+import com.example.elizarchat.di.ServiceLocator
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -39,8 +40,8 @@ fun ChatsScreen(
     onLogout: () -> Unit
 ) {
     val context = LocalContext.current
-    val tokenManager = remember { TokenManager.getInstance(context) }
-    val apiManager = remember { ApiManager(context) }
+    val tokenManager = ServiceLocator.getTokenManager(context)
+    val apiManager = ServiceLocator.getApiManager(context)
 
     val viewModel: ChatsViewModel = viewModel(
         factory = ChatsViewModel.provideFactory(apiManager, tokenManager)

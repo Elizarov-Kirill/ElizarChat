@@ -25,6 +25,7 @@ import com.example.elizarchat.data.remote.ApiManager
 import com.example.elizarchat.data.remote.dto.MessageDto
 import com.example.elizarchat.data.remote.websocket.WebSocketManager
 import com.example.elizarchat.data.remote.websocket.WebSocketState
+import com.example.elizarchat.di.ServiceLocator
 import com.example.elizarchat.ui.viewmodels.ChatViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -43,8 +44,8 @@ fun ChatScreen(
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val density = LocalDensity.current
 
-    val tokenManager = remember { TokenManager.getInstance(context) }
-    val apiManager = remember { ApiManager(context) }
+    val tokenManager = ServiceLocator.getTokenManager(context)
+    val apiManager = ServiceLocator.getApiManager(context)
     val webSocketManager = remember { WebSocketManager(context, tokenManager, apiManager) }
 
     DisposableEffect(lifecycleOwner) {

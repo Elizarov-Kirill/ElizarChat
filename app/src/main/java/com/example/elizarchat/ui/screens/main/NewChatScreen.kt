@@ -22,6 +22,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.elizarchat.data.local.session.TokenManager
 import com.example.elizarchat.data.remote.ApiManager
 import com.example.elizarchat.data.remote.dto.UserDto
+import com.example.elizarchat.di.ServiceLocator
 import com.example.elizarchat.ui.viewmodels.NewChatViewModel
 import com.example.elizarchat.ui.viewmodels.GroupChatState
 
@@ -32,8 +33,8 @@ fun NewChatScreen(
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val tokenManager = remember { TokenManager.getInstance(context) }
-    val apiManager = remember { ApiManager(context) }
+    val tokenManager = ServiceLocator.getTokenManager(context)
+    val apiManager = ServiceLocator.getApiManager(context)
 
     val viewModel: NewChatViewModel = viewModel(
         factory = NewChatViewModel.provideFactory(apiManager, tokenManager)
@@ -330,8 +331,8 @@ fun GroupChatDialog(
     var searchResults by remember { mutableStateOf<List<UserDto>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val tokenManager = remember { TokenManager.getInstance(context) }
-    val apiManager = remember { ApiManager(context) }
+    val tokenManager = ServiceLocator.getTokenManager(context)
+    val apiManager = ServiceLocator.getApiManager(context)
 
     suspend fun searchUsers(query: String): List<UserDto> {
         return try {

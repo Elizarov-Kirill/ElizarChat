@@ -1,6 +1,8 @@
 package com.example.elizarchat.data.remote.config
 
+import android.content.Context
 import com.example.elizarchat.AppConstants
+import com.example.elizarchat.data.local.session.TokenManager
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
@@ -84,6 +86,44 @@ object RetrofitConfig {
         return Retrofit.Builder()
             .baseUrl(AppConstants.API_BASE_URL) // УБРАНА функция getBaseUrl()
             .client(createAuthenticatedClient(tokenProvider))
+            .addConverterFactory(json.asConverterFactory(contentType))
+            .build()
+    }
+
+    fun createAuthenticatedClientWithRefresh(
+        context: Context,
+        tokenProvider: () -> String?,
+        tokenManager: TokenManager
+    ): OkHttpClient {
+        val loggingInterceptor = HttpLoggingInterceptor().apply {
+            level = if (AppConstants.Debug.LOG_NETWORK) {
+                HttpLoggingInterceptor.Level.BODY
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
+        }
+
+        return OkHttpClient.Builder()
+            .connectTimeout(AppConstants.CONNECT_TIMEOUT, TimeUnit.SECONDS)
+            .readTimeout(AppConstants.READ_TIMEOUT, TimeUnit.SECONDS)
+            .writeTimeout(AppConstants.WRITE_TIMEOUT, TimeUnit.SECONDS)
+            .addInterceptor(loggingInterceptor)
+            .addInterceptor(CommonHeadersInterceptor())
+            .addInterceptor(AuthInterceptor(tokenProvider))
+            .addInterceptor(TokenRefreshInterceptor(context, tokenManager)) // ДОБАВИТЬ ЭТОТ ИНТЕРЦЕПТОР
+            .addInterceptor(ErrorInterceptor())
+            .build()
+    }
+
+    // Добавьте новый метод создания Retrofit с поддержкой обновления
+    fun createAuthenticatedRetrofitWithRefresh(
+        context: Context,
+        tokenProvider: () -> String?,
+        tokenManager: TokenManager
+    ): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(AppConstants.API_BASE_URL)
+            .client(createAuthenticatedClientWithRefresh(context, tokenProvider, tokenManager))
             .addConverterFactory(json.asConverterFactory(contentType))
             .build()
     }
