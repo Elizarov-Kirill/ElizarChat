@@ -122,12 +122,13 @@ class AuthViewModel(
     }
 
     fun login() {
-        val email = _state.value.email
+        val emailOrUsername = _state.value.email  // Это поле теперь содержит email или username
         val password = _state.value.password
 
-        if (email.isBlank() || password.isBlank()) {
+        // ✅ ИЗМЕНЕНО: проверка что поле не пустое
+        if (emailOrUsername.isBlank() || password.isBlank()) {
             _state.value = _state.value.copy(
-                error = "Введите email и пароль"
+                error = "Введите email/username и пароль"  // ← ИЗМЕНЕН ТЕКСТ ОШИБКИ
             )
             return
         }
@@ -140,7 +141,7 @@ class AuthViewModel(
                 )
 
                 val request = LoginRequest(
-                    email = email,
+                    email = emailOrUsername,  // Отправляем email ИЛИ username
                     password = password
                 )
 

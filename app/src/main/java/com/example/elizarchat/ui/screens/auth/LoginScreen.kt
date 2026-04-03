@@ -64,7 +64,7 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .imePadding() // Только поднятие контента, без скролла
+                .imePadding()
         ) {
             Column(
                 modifier = Modifier
@@ -72,12 +72,11 @@ fun LoginScreen(
                     .padding(horizontal = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = if (isImeVisible) {
-                    Arrangement.Top // Когда клавиатура открыта - контент вверху
+                    Arrangement.Top
                 } else {
-                    Arrangement.Center // Когда закрыта - по центру
+                    Arrangement.Center
                 }
             ) {
-                // Добавляем отступ сверху при открытой клавиатуре
                 if (isImeVisible) {
                     Spacer(modifier = Modifier.height(32.dp))
                 }
@@ -88,19 +87,19 @@ fun LoginScreen(
                     modifier = Modifier.padding(bottom = 32.dp)
                 )
 
-                // Поле email
+                // ✅ ИЗМЕНЕНО: поле для email ИЛИ username
                 OutlinedTextField(
-                    value = state.email,
+                    value = state.email,  // Переменная называется email, но хранит email или username
                     onValueChange = { viewModel.updateEmail(it) },
-                    label = { Text("Email") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    label = { Text("Email или имя пользователя") },  // ← ИЗМЕНЕН ТЕКСТ
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),  // ← ИЗМЕНЕНО: Text вместо Email
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Поле пароля
+                // Поле пароля (без изменений)
                 OutlinedTextField(
                     value = state.password,
                     onValueChange = { viewModel.updatePassword(it) },
@@ -113,11 +112,11 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                // Кнопка входа
+                // Кнопка входа (без изменений)
                 Button(
                     onClick = { viewModel.login() },
                     enabled = !state.isLoading &&
-                            state.email.isNotBlank() &&
+                            state.email.isNotBlank() &&  // emailOrUsername не пустое
                             state.password.isNotBlank(),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -151,7 +150,6 @@ fun LoginScreen(
                     Text("Нет аккаунта? Зарегистрироваться")
                 }
 
-                // Отступ снизу для клавиатуры
                 if (isImeVisible) {
                     Spacer(modifier = Modifier.height(imeInsets.getBottom(density).dp))
                 }
