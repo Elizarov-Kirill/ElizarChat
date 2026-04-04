@@ -45,7 +45,6 @@ class TokenManager(private val context: Context) {
 
     suspend fun isLoggedIn(): Boolean = tokenStorage.isLoggedIn()
 
-
     suspend fun clearTokens() {
         tokenStorage.clearTokens()
     }
@@ -67,6 +66,9 @@ class TokenManager(private val context: Context) {
     fun getRefreshTokenSync(): String? = tokenStorage.getRefreshTokenSync()
     fun getUserIdSync(): String? = runBlocking { tokenStorage.getUserId() }
     fun isLoggedInSync(): Boolean = tokenStorage.isLoggedInSync()
+
+    // ДОБАВЬТЕ ЭТОТ МЕТОД ДЛЯ СИНХРОННОГО ПОЛУЧЕНИЯ USER ID
+    fun getUserIdSyncValue(): String? = runBlocking { tokenStorage.getUserId() }
 
     // LiveData для UI
     val isLoggedInLiveData = tokenStorage.isLoggedInFlow.asLiveData()

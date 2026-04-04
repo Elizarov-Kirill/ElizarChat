@@ -17,13 +17,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.elizarchat.data.local.session.TokenManager
-import com.example.elizarchat.data.remote.ApiManager
 import com.example.elizarchat.data.remote.dto.MessageDto
-import com.example.elizarchat.data.remote.websocket.WebSocketManager
 import com.example.elizarchat.data.remote.websocket.WebSocketState
 import com.example.elizarchat.di.ServiceLocator
 import com.example.elizarchat.ui.viewmodels.ChatViewModel
@@ -42,12 +38,13 @@ fun ChatScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    val density = LocalDensity.current
 
-    val tokenManager = ServiceLocator.getTokenManager(context)
-    val apiManager = ServiceLocator.getApiManager(context)
-    val webSocketManager = remember { WebSocketManager(context, tokenManager, apiManager) }
+    // ПОЛУЧАЕМ СИНГЛТОНЫ ИЗ SERVICE LOCATOR
+    val tokenManager = remember { ServiceLocator.getTokenManager(context) }
+    val apiManager = remember { ServiceLocator.getApiManager(context) }
+    val webSocketManager = remember { ServiceLocator.getWebSocketManager(context) }
 
+    // Регистрируем LifecycleObserver
     DisposableEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.addObserver(webSocketManager)
         onDispose {
@@ -56,7 +53,12 @@ fun ChatScreen(
     }
 
     val viewModel: ChatViewModel = viewModel(
-        factory = ChatViewModel.provideFactory(apiManager, webSocketManager, tokenManager, chatId)
+        factory = ChatViewModel.provideFactory(
+            apiManager = apiManager,
+            webSocketManager = webSocketManager,
+            tokenManager = tokenManager,
+            chatId = chatId
+        )
     )
 
     val state by viewModel.state.collectAsState()
@@ -65,15 +67,14 @@ fun ChatScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var messageText by remember { mutableStateOf("") }
-    val currentUserId = remember { mutableStateOf(0) }
 
-    // Определяем, видна ли клавиатура
+    // ИСПРАВЛЕНО: получаем userId напрямую как Int
+    val currentUserId = remember {
+        tokenManager.getUserIdSync()?.toIntOrNull() ?: 0
+    }
+
     val isImeVisible = WindowInsets.isImeVisible
     val isConnected = state.connectionStatus is WebSocketState.Connected
-
-    LaunchedEffect(Unit) {
-        currentUserId.value = tokenManager.getUserId()?.toIntOrNull() ?: 0
-    }
 
     // Прокрутка к последнему сообщению
     LaunchedEffect(state.messages.size, isImeVisible) {
@@ -97,10 +98,10 @@ fun ChatScreen(
 
     // Отметка прочитанных сообщений
     LaunchedEffect(state.messages) {
-        if (state.messages.isNotEmpty() && currentUserId.value > 0) {
+        if (state.messages.isNotEmpty() && currentUserId > 0) {
             val unreadMessages = state.messages.filter {
-                it.userId != currentUserId.value &&
-                        (it.readBy?.contains(currentUserId.value) != true)
+                it.userId != currentUserId &&
+                        (it.readBy?.contains(currentUserId) != true)
             }
             if (unreadMessages.isNotEmpty()) {
                 viewModel.markMessagesAsRead(unreadMessages.map { it.id })
@@ -108,8 +109,6 @@ fun ChatScreen(
         }
     }
 
-
-    // НЕ обнуляем WindowInsets у Scaffold полностью, а используем кастомные
     Scaffold(
         topBar = {
             TopAppBar(
@@ -134,6 +133,7 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    // Индикатор подключения WebSocket
                     Box(
                         modifier = Modifier
                             .size(12.dp)
@@ -147,15 +147,13 @@ fun ChatScreen(
                             )
                     )
                 }
-                // НЕ обнуляем windowInsets у TopAppBar
             )
         }
-        // НЕ обнуляем contentWindowInsets полностью
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues) // Используем стандартные отступы от Scaffold
+                .padding(paddingValues)
         ) {
             // Список сообщений
             LazyColumn(
@@ -204,7 +202,7 @@ fun ChatScreen(
                         ) { message ->
                             MessageBubble(
                                 message = message,
-                                isOwnMessage = message.userId == currentUserId.value,
+                                isOwnMessage = message.userId == currentUserId,
                                 modifier = Modifier.fillMaxWidth(),
                                 usersCache = usersCache
                             )
@@ -240,7 +238,7 @@ fun ChatScreen(
                     }
                 },
                 isConnected = isConnected,
-                isLoading = state.isLoading
+                isLoading = state.isSending
             )
         }
     }
@@ -263,7 +261,6 @@ fun MessageInputCorrect(
             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
         )
 
-        // Используем Box с imePadding для поднятия над клавиатурой
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -335,7 +332,6 @@ fun MessageInputCorrect(
                 }
             }
         }
-
     }
 }
 

@@ -50,7 +50,7 @@ interface AuthApi {
     @POST("auth/refresh")
     suspend fun refreshToken(
         @Body request: RefreshTokenRequest
-    ): Response<AuthResponse>  // Изменено: TokenResponse → AuthResponse
+    ): Response<RefreshTokenResponse>
 
     /**
      * POST /api/v1/auth/logout

@@ -8,6 +8,7 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Response
 import okhttp3.internal.closeQuietly
+import java.io.IOException
 
 class TokenRefreshInterceptor(
     private val context: Context,
@@ -20,6 +21,7 @@ class TokenRefreshInterceptor(
     @Volatile
     private var refreshLock = Any()
 
+    @Throws(IOException::class)
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
         var response = chain.proceed(originalRequest)
@@ -29,7 +31,9 @@ class TokenRefreshInterceptor(
             return response
         }
 
-        // Закрываем тело ответа
+        println("🔄 TokenRefreshInterceptor: Получен 401, пробуем обновить токен")
+
+        // ВАЖНО: Закрываем response, чтобы освободить ресурсы
         response.closeQuietly()
 
         // Проверяем, нужно ли обновлять токен
@@ -37,17 +41,20 @@ class TokenRefreshInterceptor(
         if (refreshToken == null || runBlocking { tokenManager.isRefreshTokenExpired() }) {
             println("❌ TokenRefreshInterceptor: Refresh токен отсутствует или истек")
             runBlocking { tokenManager.clearTokens() }
+            // Возвращаем новый response с ошибкой 401
             return response
         }
 
         // Синхронизируем обновление токена
+        var newAccessToken: String? = null
+
         synchronized(refreshLock) {
             if (!isRefreshing) {
                 isRefreshing = true
                 try {
-                    val newAccessToken = refreshAccessTokenViaApi(refreshToken)
+                    newAccessToken = refreshAccessTokenViaApi(refreshToken)
                     if (newAccessToken != null) {
-                        runBlocking { tokenManager.updateAccessToken(newAccessToken) }
+                        runBlocking { tokenManager.updateAccessToken(newAccessToken!!) }
                         println("✅ TokenRefreshInterceptor: Токен успешно обновлен")
                     } else {
                         println("❌ TokenRefreshInterceptor: Не удалось обновить токен")
@@ -56,6 +63,7 @@ class TokenRefreshInterceptor(
                     }
                 } catch (e: Exception) {
                     println("❌ TokenRefreshInterceptor: Ошибка при обновлении токена: ${e.message}")
+                    e.printStackTrace()
                     runBlocking { tokenManager.clearTokens() }
                     return response
                 } finally {
@@ -73,21 +81,36 @@ class TokenRefreshInterceptor(
                     }
                     retryCount++
                 }
-                if (retryCount >= 20) {
-                    println("❌ TokenRefreshInterceptor: Таймаут ожидания обновления токена")
+
+                // Получаем обновленный токен
+                newAccessToken = runBlocking { tokenManager.getAccessToken() }
+                if (newAccessToken == null || runBlocking { tokenManager.isAccessTokenExpired() }) {
+                    println("❌ TokenRefreshInterceptor: Токен не был обновлен после ожидания")
                     return response
                 }
             }
         }
 
         // Получаем новый токен и повторяем запрос
-        val newToken = runBlocking { tokenManager.getAccessToken() }
-        return if (newToken != null && newToken != refreshToken) {
+        val finalToken = newAccessToken ?: runBlocking { tokenManager.getAccessToken() }
+
+        return if (finalToken != null && !runBlocking { tokenManager.isAccessTokenExpired() }) {
+            println("🔄 TokenRefreshInterceptor: Повторяем запрос с новым токеном")
+
+            // Создаем новый запрос с обновленным токеном
             val newRequest = originalRequest.newBuilder()
-                .header("Authorization", "Bearer $newToken")
+                .header("Authorization", "Bearer $finalToken")
                 .build()
-            chain.proceed(newRequest)
+
+            // Повторяем запрос
+            try {
+                chain.proceed(newRequest)
+            } catch (e: Exception) {
+                println("❌ TokenRefreshInterceptor: Ошибка при повторном запросе: ${e.message}")
+                throw e
+            }
         } else {
+            println("❌ TokenRefreshInterceptor: Новый токен не получен или истек")
             response
         }
     }
@@ -101,14 +124,35 @@ class TokenRefreshInterceptor(
             val request = RefreshTokenRequest(refreshToken)
             val response = runBlocking { authApi.refreshToken(request) }
 
-            if (response.isSuccessful && response.body()?.success == true) {
-                response.body()?.tokens?.accessToken
+            if (response.isSuccessful) {
+                val body = response.body()
+                println("✅ TokenRefreshInterceptor: Response body: $body")
+
+                // Пробуем получить accessToken из разных форматов ответа
+                val accessToken = when {
+                    body?.accessToken != null -> {
+                        println("✅ Получен accessToken из поля accessToken")
+                        body.accessToken
+                    }
+                    body?.tokens?.accessToken != null -> {
+                        println("✅ Получен accessToken из tokens.accessToken")
+                        body.tokens.accessToken
+                    }
+                    else -> {
+                        println("❌ Неизвестный формат ответа: $body")
+                        null
+                    }
+                }
+
+                return accessToken
             } else {
-                println("❌ TokenRefreshInterceptor: Ошибка API - ${response.code()}")
+                val errorBody = response.errorBody()?.string()
+                println("❌ TokenRefreshInterceptor: Ошибка API - ${response.code()}, body: $errorBody")
                 null
             }
         } catch (e: Exception) {
             println("❌ TokenRefreshInterceptor: Исключение - ${e.message}")
+            e.printStackTrace()
             null
         }
     }

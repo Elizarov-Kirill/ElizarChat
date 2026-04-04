@@ -185,18 +185,23 @@ class ApiManager private constructor(
                 val response = authApi.refreshToken(request)
 
                 if (response.isSuccessful) {
-                    val authResponse = response.body()
+                    val refreshResponse = response.body()
 
-                    if (authResponse?.success == true) {
-                        tokenManager.saveTokens(
-                            authResponse.tokens.accessToken,
-                            authResponse.tokens.refreshToken,
-                            authResponse.user.id.toString()
-                        )
-                        println("✅ Access токен успешно обновлен")
-                        true
+                    if (refreshResponse?.success == true) {
+                        // Получаем accessToken из разных форматов
+                        val newAccessToken = refreshResponse.accessToken ?: refreshResponse.tokens?.accessToken
+
+                        if (newAccessToken != null) {
+                            // Сохраняем только access токен (refresh токен не меняется)
+                            tokenManager.updateAccessToken(newAccessToken)
+                            println("✅ Access токен успешно обновлен")
+                            true
+                        } else {
+                            println("❌ Access токен не найден в ответе")
+                            false
+                        }
                     } else {
-                        println("❌ Ошибка в ответе сервера: ${authResponse?.error}")
+                        println("❌ Ошибка в ответе сервера: ${refreshResponse?.error}")
                         tokenManager.clearTokens()
                         false
                     }

@@ -112,6 +112,7 @@ object RetrofitConfig {
             .addInterceptor(AuthInterceptor(tokenProvider))
             .addInterceptor(TokenRefreshInterceptor(context, tokenManager)) // ДОБАВИТЬ ЭТОТ ИНТЕРЦЕПТОР
             .addInterceptor(ErrorInterceptor())
+            .addInterceptor(loggingInterceptor)
             .build()
     }
 
@@ -163,6 +164,7 @@ object RetrofitConfig {
                 val response = chain.proceed(chain.request())
                 if (!response.isSuccessful) {
                     println("HTTP ошибка: ${response.code} - ${response.message}")
+                    // НЕ закрываем response здесь, чтобы другие интерцепторы могли его обработать
                 } else {
                     // Логируем успешный ответ для отладки
                     val responseBody = response.peekBody(1024 * 1024) // 1MB
